@@ -1,0 +1,21 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs",
+  "functions": {
+    "app/api/generate/infographic/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/tts/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/export/pdf/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/generate/image/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "env": {
+    "NEXT_PUBLIC_APP_URL": "https://modern-classroom.vercel.app"
+  }
+}

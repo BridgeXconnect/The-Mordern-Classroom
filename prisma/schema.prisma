@@ -1,0 +1,183 @@
+// Modern Classroom — Prisma Schema
+// Database: Neon PostgreSQL
+// ORM: Prisma 5
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// Enums
+// ─────────────────────────────────────────────
+
+enum CefrLevel {
+  L1
+  A1
+  A2
+  B1
+  B2
+}
+
+enum QuizType {
+  PRE
+  POST
+}
+
+enum SlideType {
+  TITLE
+  CONTENT
+  IMAGE
+  VOCABULARY
+  GRAMMAR
+  ACTIVITY
+}
+
+enum MediaType {
+  IMAGE
+  AUDIO
+  VIDEO_EMBED
+  VIDEO_GENERATED
+  INFOGRAPHIC
+}
+
+enum AtlSkill {
+  COMMUNICATION
+  THINKING
+  RESEARCH
+  SOCIAL
+  SELF_MANAGEMENT
+}
+
+// ─────────────────────────────────────────────
+// Models
+// ─────────────────────────────────────────────
+
+model Class {
+  id           String    @id @default(cuid())
+  name         String
+  cefrLevel    CefrLevel
+  academicYear String
+  description  String?
+  units        Unit[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([cefrLevel])
+}
+
+model Unit {
+  id          String     @id @default(cuid())
+  classId     String
+  class       Class      @relation(fields: [classId], references: [id], onDelete: Cascade)
+  title       String
+  ibTheme     String
+  ibTextTypes String[]
+  atlSkills   AtlSkill[]
+  order       Int        @default(0)
+  lessons     Lesson[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([classId])
+}
+
+model Lesson {
+  id           String       @id @default(cuid())
+  unitId       String
+  unit         Unit         @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  title        String
+  objectives   Json
+  duration     Int
+  ibAlignment  Json
+  order        Int          @default(0)
+  slides       Slide[]
+  worksheets   Worksheet[]
+  quizzes      Quiz[]
+  mediaAssets  MediaAsset[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([unitId])
+}
+
+model Slide {
+  id           String    @id @default(cuid())
+  lessonId     String
+  lesson       Lesson    @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  order        Int
+  type         SlideType
+  content      Json
+  speakerNotes String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([lessonId])
+  @@index([lessonId, order])
+}
+
+model Worksheet {
+  id        String   @id @default(cuid())
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  title     String
+  sections  Json
+  pdfUrl    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([lessonId])
+}
+
+model Quiz {
+  id          String        @id @default(cuid())
+  lessonId    String
+  lesson      Lesson        @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  type        QuizType
+  shareToken  String        @unique @default(uuid())
+  cefrLevel   CefrLevel
+  questions   Json
+  isActive    Boolean       @default(true)
+  expiresAt   DateTime?
+  attempts    QuizAttempt[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@index([lessonId])
+  @@index([shareToken])
+  @@index([isActive])
+}
+
+model QuizAttempt {
+  id           String   @id @default(cuid())
+  quizId       String
+  quiz         Quiz     @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  studentAlias String?
+  completedAt  DateTime @default(now())
+  score        Float
+  answers      Json
+
+  @@index([quizId])
+  @@index([quizId, completedAt])
+}
+
+model MediaAsset {
+  id        String    @id @default(cuid())
+  lessonId  String?
+  lesson    Lesson?   @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  type      MediaType
+  url       String
+  prompt    String?
+  filename  String?
+  mimeType  String?
+  sizeBytes Int?
+  createdAt DateTime  @default(now())
+
+  @@index([lessonId])
+  @@index([type])
+}
