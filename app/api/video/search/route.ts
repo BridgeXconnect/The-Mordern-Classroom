@@ -11,12 +11,6 @@ const QuerySchema = z.object({
   lessonId:  z.string().cuid().optional(),
 });
 
-// Thumbnail URL derivable from embedUrl — no need to store separately
-export function thumbFromEmbedUrl(embedUrl: string): string {
-  const id = embedUrl.split("/").pop()?.split("?")[0] ?? "";
-  return `https://img.youtube.com/vi/${id}/mqdefault.jpg`;
-}
-
 export async function GET(req: Request) {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
