@@ -3,7 +3,8 @@
   "framework": "nextjs",
   "functions": {
     "app/api/generate/infographic/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 1536
     },
     "app/api/generate/quiz/route.ts": {
       "maxDuration": 60
@@ -15,13 +16,15 @@
       "maxDuration": 30
     },
     "app/api/export/pdf/route.ts": {
-      "maxDuration": 30
+      "maxDuration": 30,
+      "memory": 1536
     },
     "app/api/generate/image/route.ts": {
       "maxDuration": 30
     },
     "app/api/video/generate/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "memory": 1536
     },
     "app/api/video/search/route.ts": {
       "maxDuration": 30

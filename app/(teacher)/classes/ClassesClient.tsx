@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GraduationCap, Plus, ChevronRight, BookOpen } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,11 +58,15 @@ export function ClassesClient({ initialClasses }: { initialClasses: ClassWithUni
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
       });
+      if (!res.ok) throw new Error("Request failed");
       const created = await res.json();
       setClasses((prev) => [{ ...created, units: [] }, ...prev]);
       setOpen(false);
       setForm({ name: "", cefrLevel: "", academicYear: new Date().getFullYear().toString(), description: "" });
+      toast.success("Class created");
       router.refresh();
+    } catch {
+      toast.error("Couldn't create the class. Please try again.");
     } finally {
       setLoading(false);
     }
