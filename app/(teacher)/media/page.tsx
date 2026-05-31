@@ -1,9 +1,8 @@
-// TODO Phase 4: Media library — all generated images, audio, infographics, videos
-export default function MediaPage() {
-  return (
-    <div>
-      <h1 className="text-2xl font-bold">Media Library</h1>
-      <p className="text-muted-foreground mt-2">TODO: Phase 4</p>
-    </div>
-  );
+import { auth } from "@clerk/nextjs/server";
+import { MediaClient } from "./MediaClient";
+
+export default async function MediaPage() {
+  const { userId } = await auth();
+  if (!userId) return null;
+  return <MediaClient />;
 }
