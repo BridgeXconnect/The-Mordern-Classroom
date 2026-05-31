@@ -12,6 +12,8 @@ import {
   Youtube,
   Clapperboard,
   Play,
+  Music,
+  Volume2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,6 +22,7 @@ import { ImageGenerator } from "@/components/media/ImageGenerator";
 import { InfographicBuilder } from "@/components/media/InfographicBuilder";
 import { VideoSearch } from "@/components/media/VideoSearch";
 import { VideoGenerator } from "@/components/media/VideoGenerator";
+import { AudioGenerator } from "@/components/media/AudioGenerator";
 
 interface MediaAsset {
   id: string;
@@ -79,6 +82,7 @@ function AssetCard({
   }
 
   const isImage       = asset.type === "IMAGE" || asset.type === "INFOGRAPHIC" || asset.type === "VIDEO_GENERATED";
+  const isAudio       = asset.type === "AUDIO";
   const isVideoEmbed  = asset.type === "VIDEO_EMBED";
   const videoId       = isVideoEmbed ? videoIdFromEmbedUrl(asset.url) : null;
   const thumbnailUrl  = videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : null;
@@ -124,6 +128,10 @@ function AssetCard({
             className="object-cover transition-transform group-hover:scale-[1.02]"
             unoptimized
           />
+        ) : isAudio ? (
+          <div className="flex h-full w-full items-center justify-center bg-amber-50 text-amber-500">
+            <Music className="h-10 w-10" />
+          </div>
         ) : (
           <div className="text-muted-foreground/40">
             <ImageIcon className="h-10 w-10" />
@@ -174,11 +182,14 @@ function AssetCard({
             <span className="text-xs text-muted-foreground ml-auto">{formatBytes(asset.sizeBytes)}</span>
           )}
         </div>
-        {(asset.filename || asset.prompt) && (
+        {isAudio ? (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <audio controls src={asset.url} className="w-full h-8 mt-1" />
+        ) : (asset.filename || asset.prompt) ? (
           <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
             {asset.filename ?? asset.prompt}
           </p>
-        )}
+        ) : null}
         <p className="text-xs text-muted-foreground/60 mt-auto pt-1">
           {new Date(asset.createdAt).toLocaleDateString()}
         </p>
@@ -219,6 +230,7 @@ export function MediaClient() {
 
   const images       = assets.filter((a) => a.type === "IMAGE");
   const infographics = assets.filter((a) => a.type === "INFOGRAPHIC");
+  const audios       = assets.filter((a) => a.type === "AUDIO");
   const videos       = assets.filter((a) => a.type === "VIDEO_EMBED" || a.type === "VIDEO_GENERATED");
   const all          = assets;
 
@@ -229,7 +241,7 @@ export function MediaClient() {
         <div>
           <h1 className="text-2xl font-bold">Media Library</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            AI-generated images, infographics, YouTube embeds, and video previews
+            AI-generated images, infographics, TTS audio, YouTube embeds, and video previews
           </p>
         </div>
         <Button
@@ -288,7 +300,21 @@ export function MediaClient() {
             </div>
           </div>
 
-          {/* Row 2: YouTube Search */}
+          {/* Row 2: Text-to-Speech Audio */}
+          <div className="rounded-xl border bg-card p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="rounded-lg bg-amber-100 p-2">
+                <Volume2 className="h-4 w-4 text-amber-700" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">Text-to-Speech Audio</p>
+                <p className="text-xs text-muted-foreground">Google Cloud Neural2 · CEFR-paced · cached</p>
+              </div>
+            </div>
+            <AudioGenerator onGenerated={handleGenerated} />
+          </div>
+
+          {/* Row 3: YouTube Search */}
           <div className="rounded-xl border bg-card p-5">
             <div className="flex items-center gap-2 mb-4">
               <div className="rounded-lg bg-red-100 p-2">
@@ -302,7 +328,7 @@ export function MediaClient() {
             <VideoSearch onSaved={() => startRefresh(load)} />
           </div>
 
-          {/* Row 3: Video Generator */}
+          {/* Row 4: Video Generator */}
           <div className="rounded-xl border bg-card p-5">
             <div className="flex items-center gap-2 mb-4">
               <div className="rounded-lg bg-purple-100 p-2">
@@ -346,6 +372,14 @@ export function MediaClient() {
                   <h2 className="text-sm font-medium text-muted-foreground mb-3">Infographics ({infographics.length})</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {infographics.map((a) => <AssetCard key={a.id} asset={a} onDelete={handleDelete} />)}
+                  </div>
+                </div>
+              )}
+              {audios.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-medium text-muted-foreground mb-3">Audio ({audios.length})</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {audios.map((a) => <AssetCard key={a.id} asset={a} onDelete={handleDelete} />)}
                   </div>
                 </div>
               )}

@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { QuestionsArraySchema } from "@/lib/quiz-validation";
+import { getOrCreateSpeech } from "@/lib/tts";
 import type { Prisma } from "@prisma/client";
 
 const CreateSchema = z.object({
@@ -50,12 +51,28 @@ export async function POST(req: Request) {
   // Assign a stable id to each question (used for answer matching at scoring time).
   const withIds = questions.map((q) => ({ ...q, id: q.id ?? randomUUID() }));
 
+  // Pre-generate real TTS audio for listening questions (cached by content
+  // hash). If synthesis fails the quiz still saves — ListeningQ falls back to
+  // the browser's SpeechSynthesis voice.
+  const withAudio = await Promise.all(
+    withIds.map(async (q) => {
+      if (q.type !== "listening" || q.audioUrl || !q.audioText) return q;
+      try {
+        const { url } = await getOrCreateSpeech(q.audioText, { cefrLevel }, lessonId);
+        return { ...q, audioUrl: url };
+      } catch (err) {
+        console.error("Listening TTS generation failed; using browser-voice fallback:", err);
+        return q;
+      }
+    })
+  );
+
   const quiz = await db.quiz.create({
     data: {
       lessonId,
       type,
       cefrLevel,
-      questions: withIds as unknown as Prisma.InputJsonValue,
+      questions: withAudio as unknown as Prisma.InputJsonValue,
       isActive,
       ...(expiresAt ? { expiresAt: new Date(expiresAt) } : {}),
     },
