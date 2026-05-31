@@ -85,6 +85,23 @@ export async function searchYouTube(
 }
 
 /**
+ * Derive the YouTube video ID from an embed URL.
+ * e.g. "https://www.youtube.com/embed/dQw4w9WgXcQ" → "dQw4w9WgXcQ"
+ */
+export function videoIdFromEmbedUrl(url: string): string {
+  return url.split("/").pop()?.split("?")[0] ?? "";
+}
+
+/**
+ * YouTube thumbnail URL from an embed URL.
+ * mqdefault = 320×180, hqdefault = 480×360
+ */
+export function thumbFromEmbedUrl(embedUrl: string, quality: "mq" | "hq" = "mq"): string {
+  const id = videoIdFromEmbedUrl(embedUrl);
+  return `https://img.youtube.com/vi/${id}/${quality}default.jpg`;
+}
+
+/**
  * Build a YouTube embed iframe HTML string.
  */
 export function buildEmbedHtml(videoId: string, title: string): string {

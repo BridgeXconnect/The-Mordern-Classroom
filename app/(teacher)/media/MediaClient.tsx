@@ -9,12 +9,17 @@ import {
   Loader2,
   RefreshCw,
   Download,
+  Youtube,
+  Clapperboard,
+  Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ImageGenerator } from "@/components/media/ImageGenerator";
 import { InfographicBuilder } from "@/components/media/InfographicBuilder";
+import { VideoSearch } from "@/components/media/VideoSearch";
+import { VideoGenerator } from "@/components/media/VideoGenerator";
 
 interface MediaAsset {
   id: string;
@@ -32,16 +37,16 @@ const TYPE_LABELS: Record<MediaAsset["type"], string> = {
   IMAGE:           "Image",
   INFOGRAPHIC:     "Infographic",
   AUDIO:           "Audio",
-  VIDEO_EMBED:     "Video",
-  VIDEO_GENERATED: "Video",
+  VIDEO_EMBED:     "YouTube",
+  VIDEO_GENERATED: "Video Preview",
 };
 
 const TYPE_COLOURS: Record<MediaAsset["type"], string> = {
   IMAGE:           "bg-sky-100 text-sky-700",
   INFOGRAPHIC:     "bg-violet-100 text-violet-700",
   AUDIO:           "bg-amber-100 text-amber-700",
-  VIDEO_EMBED:     "bg-emerald-100 text-emerald-700",
-  VIDEO_GENERATED: "bg-emerald-100 text-emerald-700",
+  VIDEO_EMBED:     "bg-red-100 text-red-700",
+  VIDEO_GENERATED: "bg-purple-100 text-purple-700",
 };
 
 function formatBytes(bytes: number | null): string {
@@ -49,6 +54,10 @@ function formatBytes(bytes: number | null): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function videoIdFromEmbedUrl(url: string): string {
+  return url.split("/").pop()?.split("?")[0] ?? "";
 }
 
 function AssetCard({
@@ -59,6 +68,7 @@ function AssetCard({
   onDelete: (id: string) => void;
 }) {
   const [deleting, startDelete] = useTransition();
+  const [playing,  setPlaying]  = useState(false);
 
   function handleDelete() {
     if (!confirm("Delete this asset? This cannot be undone.")) return;
@@ -68,13 +78,45 @@ function AssetCard({
     });
   }
 
-  const isImage = asset.type === "IMAGE" || asset.type === "INFOGRAPHIC";
+  const isImage       = asset.type === "IMAGE" || asset.type === "INFOGRAPHIC" || asset.type === "VIDEO_GENERATED";
+  const isVideoEmbed  = asset.type === "VIDEO_EMBED";
+  const videoId       = isVideoEmbed ? videoIdFromEmbedUrl(asset.url) : null;
+  const thumbnailUrl  = videoId ? `https://img.youtube.com/vi/${videoId}/mqdefault.jpg` : null;
+  const ytUrl         = videoId ? `https://www.youtube.com/watch?v=${videoId}` : null;
 
   return (
     <div className="group rounded-xl border bg-card overflow-hidden flex flex-col">
       {/* Thumbnail */}
       <div className="relative aspect-video bg-muted flex items-center justify-center overflow-hidden">
-        {isImage ? (
+        {isVideoEmbed && thumbnailUrl ? (
+          playing ? (
+            <iframe
+              src={`${asset.url}?autoplay=1&rel=0`}
+              title={asset.filename ?? "YouTube video"}
+              className="w-full h-full"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          ) : (
+            <>
+              <Image
+                src={thumbnailUrl}
+                alt={asset.filename ?? "YouTube video"}
+                fill
+                className="object-cover transition-transform group-hover:scale-[1.02]"
+                unoptimized
+              />
+              <button
+                onClick={() => setPlaying(true)}
+                className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <div className="bg-red-600 rounded-full p-3">
+                  <Play className="h-5 w-5 text-white fill-white" />
+                </div>
+              </button>
+            </>
+          )
+        ) : isImage ? (
           <Image
             src={asset.url}
             alt={asset.prompt ?? "Media asset"}
@@ -88,25 +130,38 @@ function AssetCard({
           </div>
         )}
 
-        {/* Overlay actions */}
-        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2 gap-1.5">
-          <a
-            href={asset.url}
-            download
-            target="_blank"
-            rel="noopener noreferrer"
-            className="rounded-md bg-white/90 p-1.5 text-gray-900 hover:bg-white transition-colors"
-          >
-            <Download className="h-3.5 w-3.5" />
-          </a>
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="rounded-md bg-red-500/90 p-1.5 text-white hover:bg-red-500 transition-colors disabled:opacity-50"
-          >
-            {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-          </button>
-        </div>
+        {/* Overlay actions (not shown when video is playing) */}
+        {!playing && (
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-end justify-end p-2 gap-1.5">
+            {ytUrl ? (
+              <a
+                href={ytUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md bg-white/90 p-1.5 text-gray-900 hover:bg-white transition-colors"
+              >
+                <Youtube className="h-3.5 w-3.5" />
+              </a>
+            ) : (
+              <a
+                href={asset.url}
+                download
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-md bg-white/90 p-1.5 text-gray-900 hover:bg-white transition-colors"
+              >
+                <Download className="h-3.5 w-3.5" />
+              </a>
+            )}
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-md bg-red-500/90 p-1.5 text-white hover:bg-red-500 transition-colors disabled:opacity-50"
+            >
+              {deleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Meta */}
@@ -119,8 +174,10 @@ function AssetCard({
             <span className="text-xs text-muted-foreground ml-auto">{formatBytes(asset.sizeBytes)}</span>
           )}
         </div>
-        {asset.prompt && (
-          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">{asset.prompt}</p>
+        {(asset.filename || asset.prompt) && (
+          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+            {asset.filename ?? asset.prompt}
+          </p>
         )}
         <p className="text-xs text-muted-foreground/60 mt-auto pt-1">
           {new Date(asset.createdAt).toLocaleDateString()}
@@ -131,9 +188,9 @@ function AssetCard({
 }
 
 export function MediaClient() {
-  const [assets, setAssets]     = useState<MediaAsset[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [refreshing, startRefresh] = useTransition();
+  const [assets, setAssets]         = useState<MediaAsset[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [refreshing, startRefresh]  = useTransition();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -148,7 +205,6 @@ export function MediaClient() {
   useEffect(() => { load(); }, [load]);
 
   function handleGenerated(_url: string, id: string) {
-    // Optimistically reload the library after a short delay (R2 CDN propagation)
     startRefresh(async () => {
       await new Promise((r) => setTimeout(r, 800));
       const res = await fetch("/api/media");
@@ -163,6 +219,7 @@ export function MediaClient() {
 
   const images       = assets.filter((a) => a.type === "IMAGE");
   const infographics = assets.filter((a) => a.type === "INFOGRAPHIC");
+  const videos       = assets.filter((a) => a.type === "VIDEO_EMBED" || a.type === "VIDEO_GENERATED");
   const all          = assets;
 
   return (
@@ -172,7 +229,7 @@ export function MediaClient() {
         <div>
           <h1 className="text-2xl font-bold">Media Library</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            AI-generated images and infographics — stored in Cloudflare R2
+            AI-generated images, infographics, YouTube embeds, and video previews
           </p>
         </div>
         <Button
@@ -197,8 +254,10 @@ export function MediaClient() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Generate tab */}
-        <TabsContent value="generate" className="mt-4">
+        {/* ── Generate tab ─────────────────────────────────────────────────── */}
+        <TabsContent value="generate" className="mt-4 space-y-6">
+
+          {/* Row 1: Image + Infographic */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Image Generator */}
             <div className="rounded-xl border bg-card p-5">
@@ -228,9 +287,37 @@ export function MediaClient() {
               <InfographicBuilder onGenerated={handleGenerated} />
             </div>
           </div>
+
+          {/* Row 2: YouTube Search */}
+          <div className="rounded-xl border bg-card p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="rounded-lg bg-red-100 p-2">
+                <Youtube className="h-4 w-4 text-red-700" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">YouTube Video Search</p>
+                <p className="text-xs text-muted-foreground">YouTube Data API v3 · quota-cached</p>
+              </div>
+            </div>
+            <VideoSearch onSaved={() => startRefresh(load)} />
+          </div>
+
+          {/* Row 3: Video Generator */}
+          <div className="rounded-xl border bg-card p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="rounded-lg bg-purple-100 p-2">
+                <Clapperboard className="h-4 w-4 text-purple-700" />
+              </div>
+              <div>
+                <p className="font-medium text-sm">Video Preview Generator</p>
+                <p className="text-xs text-muted-foreground">Remotion templates · Puppeteer preview frame</p>
+              </div>
+            </div>
+            <VideoGenerator onGenerated={handleGenerated} />
+          </div>
         </TabsContent>
 
-        {/* Library tab */}
+        {/* ── Library tab ──────────────────────────────────────────────────── */}
         <TabsContent value="library" className="mt-4">
           {loading ? (
             <div className="py-16 text-center">
@@ -241,7 +328,7 @@ export function MediaClient() {
               <ImageIcon className="h-10 w-10 mx-auto text-muted-foreground/40 mb-3" />
               <p className="font-medium text-muted-foreground">No media yet</p>
               <p className="text-sm text-muted-foreground/70 mt-1">
-                Switch to the <strong>Generate</strong> tab to create your first image or infographic.
+                Switch to the <strong>Generate</strong> tab to create your first asset.
               </p>
             </div>
           ) : (
@@ -259,6 +346,14 @@ export function MediaClient() {
                   <h2 className="text-sm font-medium text-muted-foreground mb-3">Infographics ({infographics.length})</h2>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {infographics.map((a) => <AssetCard key={a.id} asset={a} onDelete={handleDelete} />)}
+                  </div>
+                </div>
+              )}
+              {videos.length > 0 && (
+                <div>
+                  <h2 className="text-sm font-medium text-muted-foreground mb-3">Videos ({videos.length})</h2>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {videos.map((a) => <AssetCard key={a.id} asset={a} onDelete={handleDelete} />)}
                   </div>
                 </div>
               )}
