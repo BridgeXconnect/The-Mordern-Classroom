@@ -178,15 +178,16 @@ export function InfographicBuilder({ lessonId, onGenerated }: Props) {
         <Label className="text-sm font-medium">Template</Label>
         <div className="grid grid-cols-3 gap-2">
           {TEMPLATES.map((t) => (
-            <button
+            <Button
               key={t.type}
               type="button"
+              variant="outline"
               onClick={() => { setTemplate(t.type); setPreviewUrl(null); setSaved(false); }}
-              className={`rounded-lg border p-2.5 text-left transition-colors ${template === t.type ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/40"}`}
+              className={`h-auto p-2.5 flex-col items-start text-left transition-colors ${template === t.type ? "border-primary bg-primary/5" : "hover:border-muted-foreground/40"}`}
             >
               <p className={`text-xs font-medium ${template === t.type ? "text-primary" : ""}`}>{t.label}</p>
-              <p className="text-xs text-muted-foreground mt-0.5 leading-tight">{t.description}</p>
-            </button>
+              <p className="text-xs text-muted-foreground mt-0.5 leading-tight whitespace-normal">{t.description}</p>
+            </Button>
           ))}
         </div>
       </div>

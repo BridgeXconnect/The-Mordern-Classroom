@@ -69,16 +69,18 @@ export function ImageGenerator({ lessonId, onGenerated }: Props) {
       {/* Source selector */}
       <div className="flex gap-2">
         {(["pollinations", "huggingface"] as const).map((s) => (
-          <button
+          <Button
             key={s}
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => setSource(s)}
-            className={`flex-1 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-              source === s ? "border-primary bg-primary/5 text-primary" : "border-border text-muted-foreground hover:border-muted-foreground/40"
+            className={`flex-1 text-xs font-medium transition-colors ${
+              source === s ? "border-primary bg-primary/5 text-primary" : "text-muted-foreground hover:border-muted-foreground/40"
             }`}
           >
             {s === "pollinations" ? "Pollinations.ai (fast)" : "HF FLUX.1-schnell"}
-          </button>
+          </Button>
         ))}
       </div>
 

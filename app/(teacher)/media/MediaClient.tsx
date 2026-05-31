@@ -63,8 +63,8 @@ function AssetCard({
   function handleDelete() {
     if (!confirm("Delete this asset? This cannot be undone.")) return;
     startDelete(async () => {
-      await fetch(`/api/media/${asset.id}`, { method: "DELETE" });
-      onDelete(asset.id);
+      const res = await fetch(`/api/media/${asset.id}`, { method: "DELETE" });
+      if (res.ok) onDelete(asset.id);
     });
   }
 

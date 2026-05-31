@@ -15,14 +15,17 @@ export async function DELETE(
   const asset = await db.mediaAsset.findUnique({ where: { id } });
   if (!asset) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Delete from R2 first, then DB (tolerate R2 errors — DB record is the source of truth)
+  // Attempt to remove the R2 object first; surface failures so the client knows
+  // the DB record was removed but storage may still have the file.
+  let r2Warning: string | undefined;
   try {
     await deleteFromR2(asset.url);
-  } catch {
-    // Log but don't fail — R2 object may already be gone
-    console.warn(`R2 delete failed for ${asset.url}`);
+  } catch (err) {
+    console.error(`R2 delete failed for ${asset.url}:`, err);
+    r2Warning = "R2 object could not be deleted; the file may still exist in storage.";
   }
 
   await db.mediaAsset.delete({ where: { id } });
-  return NextResponse.json({ ok: true });
+
+  return NextResponse.json({ ok: true, ...(r2Warning ? { warning: r2Warning } : {}) });
 }

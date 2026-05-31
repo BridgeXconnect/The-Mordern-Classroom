@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { uploadToR2 } from "@/lib/r2";
+import { uploadToR2, deleteFromR2 } from "@/lib/r2";
 
 const Schema = z.object({
   prompt:   z.string().min(5).max(500),
@@ -62,17 +62,25 @@ export async function POST(req: Request) {
 
   const url = await uploadToR2(buffer, "images", "image/jpeg");
 
-  const asset = await db.mediaAsset.create({
-    data: {
-      type:      "IMAGE",
-      url,
-      prompt,
-      filename:  url.split("/").pop() ?? "image.jpg",
-      mimeType:  "image/jpeg",
-      sizeBytes: buffer.byteLength,
-      ...(lessonId ? { lessonId } : {}),
-    },
-  });
-
-  return NextResponse.json({ ...asset, source: usedSource }, { status: 201 });
+  try {
+    const asset = await db.mediaAsset.create({
+      data: {
+        type:      "IMAGE",
+        url,
+        prompt,
+        filename:  url.split("/").pop() ?? "image.jpg",
+        mimeType:  "image/jpeg",
+        sizeBytes: buffer.byteLength,
+        ...(lessonId ? { lessonId } : {}),
+      },
+    });
+    return NextResponse.json({ ...asset, source: usedSource }, { status: 201 });
+  } catch (err) {
+    // DB insert failed — clean up the R2 object so we don't leak storage
+    console.error("DB insert failed after R2 upload; cleaning up orphan:", err);
+    await deleteFromR2(url).catch((r2Err) =>
+      console.error("R2 cleanup also failed:", r2Err)
+    );
+    return NextResponse.json({ error: "Failed to save image" }, { status: 500 });
+  }
 }
