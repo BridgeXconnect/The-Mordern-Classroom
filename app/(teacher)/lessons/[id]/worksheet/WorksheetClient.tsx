@@ -4,6 +4,23 @@ import React, { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  arrayMove,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   ChevronLeft,
   FileText,
   Download,
@@ -18,9 +35,16 @@ import {
   Columns2,
   SortAsc,
   CheckSquare,
+  GripVertical,
+  Pencil,
+  Check,
+  Plus,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -28,10 +52,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import type { WorksheetSection, WorksheetSectionType } from "@/types/worksheet";
+import { SectionEditor } from "@/components/worksheet/SectionEditor";
+import type {
+  WorksheetSection,
+  WorksheetSectionType,
+  WorksheetSectionContent,
+} from "@/types/worksheet";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -96,72 +124,190 @@ const SECTION_COLOURS: Record<WorksheetSectionType, string> = {
   "image-description": "bg-rose-100 text-rose-700",
 };
 
-// ── Section preview ────────────────────────────────────────────────────────────
+// ── Blank section factory (for "Add section") ───────────────────────────────────
 
-function SectionCard({ section, index }: { section: WorksheetSection; index: number }) {
+function newId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function blankSection(type: WorksheetSectionType): WorksheetSection {
+  const meta = SECTION_OPTIONS.find((o) => o.type === type);
+  const title = meta?.label ?? "Section";
+  const base = { id: newId(), type, title, points: undefined as number | undefined };
+
+  let content: WorksheetSectionContent;
+  switch (type) {
+    case "reading-passage":
+      content = { passage: "", comprehensionQuestions: [{ question: "" }] };
+      break;
+    case "gap-fill":
+      content = { text: "", answers: [], wordBank: [] };
+      break;
+    case "vocabulary":
+      content = { words: [{ word: "", definition: "", example: "" }] };
+      break;
+    case "multiple-choice":
+      content = { questions: [{ question: "", options: ["", ""], correctIndex: 0 }] };
+      break;
+    case "matching":
+      content = { leftItems: [""], rightItems: [""], correctPairs: [[0, 0]] };
+      break;
+    case "writing-prompt":
+      content = { prompt: "", guidancePoints: [] };
+      break;
+    case "ordering":
+      content = { items: [""], correctOrder: [0] };
+      break;
+    case "discussion":
+      content = { questions: [""] };
+      break;
+    default:
+      content = { text: "" };
+  }
+  return { ...base, content };
+}
+
+// ── Read-only section preview ────────────────────────────────────────────────
+
+function SectionPreview({ section }: { section: WorksheetSection }) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c = section.content as any;
+  switch (section.type) {
+    case "reading-passage":
+      return c.passage ? <p className="text-xs text-muted-foreground line-clamp-2">{c.passage}</p> : null;
+    case "gap-fill":
+      return c.text ? <p className="text-xs text-muted-foreground line-clamp-2">{c.text}</p> : null;
+    case "vocabulary":
+      return (c.words?.length ?? 0) > 0
+        ? <p className="text-xs text-muted-foreground">{c.words.map((w: { word: string }) => w.word).filter(Boolean).join(", ")}</p>
+        : null;
+    case "multiple-choice":
+      return (c.questions?.length ?? 0) > 0
+        ? <p className="text-xs text-muted-foreground">{c.questions.length} question{c.questions.length !== 1 ? "s" : ""}</p>
+        : null;
+    case "matching":
+      return (c.leftItems?.length ?? 0) > 0
+        ? <p className="text-xs text-muted-foreground">{c.leftItems.length} pairs</p>
+        : null;
+    case "writing-prompt":
+      return c.prompt ? <p className="text-xs text-muted-foreground line-clamp-2">{c.prompt}</p> : null;
+    case "ordering":
+      return (c.items?.length ?? 0) > 0
+        ? <p className="text-xs text-muted-foreground">{c.items.length} items to order</p>
+        : null;
+    case "discussion":
+      return (c.questions?.length ?? 0) > 0
+        ? <p className="text-xs text-muted-foreground">{c.questions.length} discussion question{c.questions.length !== 1 ? "s" : ""}</p>
+        : null;
+    default:
+      return null;
+  }
+}
+
+// ── Sortable, editable section card ──────────────────────────────────────────
+
+function SortableSection({
+  section,
+  index,
+  isEditing,
+  onEdit,
+  onDone,
+  onChange,
+  onDelete,
+}: {
+  section: WorksheetSection;
+  index: number;
+  isEditing: boolean;
+  onEdit: () => void;
+  onDone: () => void;
+  onChange: (next: WorksheetSection) => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: section.id });
   const cfg = SECTION_OPTIONS.find((o) => o.type === section.type);
   const Icon = cfg?.icon ?? FileText;
   const colour = SECTION_COLOURS[section.type] ?? "bg-gray-100 text-gray-700";
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const c = section.content as any;
 
-  function preview(): React.ReactNode {
-    switch (section.type) {
-      case "reading-passage":
-        return c.passage
-          ? <p className="text-xs text-muted-foreground line-clamp-2">{c.passage}</p>
-          : null;
-      case "gap-fill":
-        return c.text
-          ? <p className="text-xs text-muted-foreground line-clamp-2">{c.text}</p>
-          : null;
-      case "vocabulary":
-        return (c.words?.length ?? 0) > 0
-          ? <p className="text-xs text-muted-foreground">{c.words.map((w: { word: string }) => w.word).join(", ")}</p>
-          : null;
-      case "multiple-choice":
-        return (c.questions?.length ?? 0) > 0
-          ? <p className="text-xs text-muted-foreground">{c.questions.length} question{c.questions.length !== 1 ? "s" : ""}</p>
-          : null;
-      case "matching":
-        return (c.leftItems?.length ?? 0) > 0
-          ? <p className="text-xs text-muted-foreground">{c.leftItems.length} pairs</p>
-          : null;
-      case "writing-prompt":
-        return c.prompt
-          ? <p className="text-xs text-muted-foreground line-clamp-2">{c.prompt}</p>
-          : null;
-      case "ordering":
-        return (c.items?.length ?? 0) > 0
-          ? <p className="text-xs text-muted-foreground">{c.items.length} items to order</p>
-          : null;
-      case "discussion":
-        return (c.questions?.length ?? 0) > 0
-          ? <p className="text-xs text-muted-foreground">{c.questions.length} discussion question{c.questions.length !== 1 ? "s" : ""}</p>
-          : null;
-      default:
-        return null;
-    }
-  }
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   return (
-    <div className="flex items-start gap-3 rounded-lg border bg-card p-3">
-      <div className={`rounded-md p-2 shrink-0 ${colour}`}>
-        <Icon className="h-4 w-4" />
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground">{index + 1}.</span>
-          <span className="font-medium text-sm">{section.title}</span>
-          {section.points !== undefined && (
-            <Badge variant="outline" className="text-xs ml-auto shrink-0">{section.points} pts</Badge>
-          )}
-        </div>
-        {section.instructions && (
-          <p className="text-xs text-muted-foreground italic mt-0.5">{section.instructions}</p>
+    <div ref={setNodeRef} style={style} className="rounded-lg border bg-card">
+      <div className="flex items-start gap-2 p-3">
+        {!isEditing && (
+          <button
+            type="button"
+            className="mt-1 cursor-grab touch-none text-muted-foreground/50 hover:text-muted-foreground"
+            aria-label="Drag to reorder"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
         )}
-        <div className="mt-1">{preview()}</div>
+        <div className={`rounded-md p-2 shrink-0 ${colour}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">{index + 1}.</span>
+            <span className="font-medium text-sm truncate">{section.title || cfg?.label}</span>
+            {section.points !== undefined && (
+              <Badge variant="outline" className="text-xs shrink-0">{section.points} pts</Badge>
+            )}
+            <div className="ml-auto flex items-center gap-0.5 shrink-0">
+              {isEditing ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-primary"
+                  onClick={onDone}
+                  aria-label="Done editing section"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground"
+                  onClick={onEdit}
+                  aria-label="Edit section"
+                >
+                  <Pencil className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                onClick={onDelete}
+                aria-label="Delete section"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+          {!isEditing && section.instructions && (
+            <p className="text-xs text-muted-foreground italic mt-0.5">{section.instructions}</p>
+          )}
+          {!isEditing && <div className="mt-1"><SectionPreview section={section} /></div>}
+        </div>
       </div>
+      {isEditing && (
+        <div className="px-3 pb-3">
+          <SectionEditor section={section} onChange={onChange} />
+        </div>
+      )}
     </div>
   );
 }
@@ -187,16 +333,14 @@ function GenerateDialog({
   function toggle(type: WorksheetSectionType) {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(type) ? next.delete(type) : next.add(type);
+      if (next.has(type)) next.delete(type);
+      else next.add(type);
       return next;
     });
   }
 
   function handleGenerate() {
-    // Preserve the insertion order of SECTION_OPTIONS for a sensible section flow
-    const ordered = SECTION_OPTIONS
-      .map((o) => o.type)
-      .filter((t) => selected.has(t));
+    const ordered = SECTION_OPTIONS.map((o) => o.type).filter((t) => selected.has(t));
     onGenerate(ordered, notes);
   }
 
@@ -288,7 +432,83 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
   const [generating, startGenerating] = useTransition();
   const [exporting, setExporting] = useState(false);
   const [deleting, startDeleting] = useTransition();
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [showAddMenu, setShowAddMenu] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  // ── Persistence ───────────────────────────────────────────────────────────
+
+  async function persist(next: WorksheetData) {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/worksheets/${next.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: next.title, sections: next.sections }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setDirty(false);
+      toast.success("Worksheet saved");
+    } catch {
+      setError("Failed to save changes. Please try again.");
+      toast.error("Couldn't save the worksheet.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Update sections locally (marks dirty; persisted via explicit Save).
+  function updateSections(updater: (sections: WorksheetSection[]) => WorksheetSection[]) {
+    setWorksheet((prev) => (prev ? { ...prev, sections: updater(prev.sections) } : prev));
+    setDirty(true);
+  }
+
+  function handleSectionChange(updated: WorksheetSection) {
+    updateSections((sections) => sections.map((s) => (s.id === updated.id ? updated : s)));
+  }
+
+  function handleDeleteSection(id: string) {
+    if (!confirm("Remove this section?")) return;
+    updateSections((sections) => sections.filter((s) => s.id !== id));
+    if (editingId === id) setEditingId(null);
+  }
+
+  function handleAddSection(type: WorksheetSectionType) {
+    const section = blankSection(type);
+    updateSections((sections) => [...sections, section]);
+    setEditingId(section.id);
+    setShowAddMenu(false);
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    updateSections((sections) => {
+      const oldIndex = sections.findIndex((s) => s.id === active.id);
+      const newIndex = sections.findIndex((s) => s.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return sections;
+      return arrayMove(sections, oldIndex, newIndex);
+    });
+  }
+
+  function saveTitle() {
+    const trimmed = titleDraft.trim();
+    if (trimmed && worksheet) {
+      setWorksheet({ ...worksheet, title: trimmed });
+      setDirty(true);
+    }
+    setEditingTitle(false);
+  }
 
   // ── Generate ────────────────────────────────────────────────────────────────
 
@@ -312,9 +532,13 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
           title: data.title,
           sections: data.sections as WorksheetSection[],
         });
+        setDirty(false);
+        setEditingId(null);
         setGenerateOpen(false);
+        toast.success("Worksheet generated");
       } catch {
         setError("Failed to generate worksheet. Please try again.");
+        toast.error("Generation failed.");
       }
     });
   }
@@ -323,6 +547,10 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
 
   async function handleExportPdf() {
     if (!worksheet) return;
+    if (dirty) {
+      toast.warning("Save your changes before exporting.");
+      return;
+    }
     setExporting(true);
     setError(null);
     try {
@@ -341,12 +569,13 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
       URL.revokeObjectURL(url);
     } catch {
       setError("Failed to export PDF. Please try again.");
+      toast.error("Export failed.");
     } finally {
       setExporting(false);
     }
   }
 
-  // ── Delete ──────────────────────────────────────────────────────────────────
+  // ── Delete worksheet ──────────────────────────────────────────────────────────
 
   function handleDelete() {
     if (!worksheet || !confirm("Delete this worksheet? This cannot be undone.")) return;
@@ -356,8 +585,10 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
         if (!res.ok) throw new Error("Delete failed");
         setWorksheet(null);
         router.refresh();
+        toast.success("Worksheet deleted");
       } catch {
         setError("Failed to delete worksheet.");
+        toast.error("Delete failed.");
       }
     });
   }
@@ -366,7 +597,7 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      {/* Breadcrumb */}
+      {/* Breadcrumb + title */}
       <div>
         <Link
           href={`/classes/${classId}`}
@@ -381,26 +612,56 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
           <ChevronLeft className="h-3 w-3" /> {lesson.title}
         </Link>
         <div className="flex items-center gap-3 mt-2">
-          <FileText className="h-5 w-5 text-primary" />
-          <div>
-            <h1 className="text-xl font-bold leading-tight">
-              {worksheet ? worksheet.title : "Worksheet"}
-            </h1>
+          <FileText className="h-5 w-5 text-primary shrink-0" />
+          <div className="flex-1 min-w-0">
+            {editingTitle && worksheet ? (
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveTitle();
+                    if (e.key === "Escape") setEditingTitle(false);
+                  }}
+                  autoFocus
+                  className="h-8 text-base font-bold"
+                />
+                <Button size="icon" variant="ghost" className="h-7 w-7 text-primary" onClick={saveTitle} aria-label="Save title">
+                  <Check className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-xl font-bold leading-tight truncate">
+                  {worksheet ? worksheet.title : "Worksheet"}
+                </h1>
+                {worksheet && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-6 w-6 text-muted-foreground shrink-0"
+                    onClick={() => {
+                      setTitleDraft(worksheet.title);
+                      setEditingTitle(true);
+                    }}
+                    aria-label="Rename worksheet"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                )}
+              </div>
+            )}
             <p className="text-xs text-muted-foreground">
               {lesson.unitTitle} · {lesson.cefrLevel}
             </p>
           </div>
-          <Badge variant="outline" className="ml-auto">{lesson.cefrLevel}</Badge>
+          <Badge variant="outline" className="ml-auto shrink-0">{lesson.cefrLevel}</Badge>
         </div>
       </div>
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 flex-wrap">
-        <Button
-          onClick={() => setGenerateOpen(true)}
-          disabled={generating}
-          size="sm"
-        >
+        <Button onClick={() => setGenerateOpen(true)} disabled={generating} size="sm">
           {generating ? (
             <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
           ) : (
@@ -412,11 +673,20 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
         {worksheet && (
           <>
             <Button
-              variant="outline"
+              variant={dirty ? "default" : "outline"}
               size="sm"
-              onClick={handleExportPdf}
-              disabled={exporting}
+              onClick={() => persist(worksheet)}
+              disabled={saving || !dirty}
             >
+              {saving ? (
+                <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
+              ) : (
+                <Check className="h-3.5 w-3.5 mr-2" />
+              )}
+              {dirty ? "Save changes" : "Saved"}
+            </Button>
+
+            <Button variant="outline" size="sm" onClick={handleExportPdf} disabled={exporting}>
               {exporting ? (
                 <Loader2 className="h-3.5 w-3.5 mr-2 animate-spin" />
               ) : (
@@ -480,13 +750,75 @@ export function WorksheetClient({ lesson, classId, initialWorksheet }: Props) {
               {worksheet.sections.length} section{worksheet.sections.length !== 1 ? "s" : ""}
             </p>
             <p className="text-xs text-muted-foreground">
-              Total:{" "}
-              {worksheet.sections.reduce((sum, s) => sum + (s.points ?? 0), 0)} pts
+              Total: {worksheet.sections.reduce((sum, s) => sum + (s.points ?? 0), 0)} pts
             </p>
           </div>
-          {worksheet.sections.map((section, i) => (
-            <SectionCard key={section.id} section={section} index={i} />
-          ))}
+
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={worksheet.sections.map((s) => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-3">
+                {worksheet.sections.map((section, i) => (
+                  <SortableSection
+                    key={section.id}
+                    section={section}
+                    index={i}
+                    isEditing={editingId === section.id}
+                    onEdit={() => setEditingId(section.id)}
+                    onDone={() => setEditingId(null)}
+                    onChange={handleSectionChange}
+                    onDelete={() => handleDeleteSection(section.id)}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
+
+          {/* Add section */}
+          {showAddMenu ? (
+            <div className="rounded-lg border border-dashed p-3">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-muted-foreground">Choose a section type</p>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-6 w-6"
+                  onClick={() => setShowAddMenu(false)}
+                  aria-label="Cancel adding section"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {SECTION_OPTIONS.map(({ type, label, icon: Icon }) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => handleAddSection(type)}
+                    className="flex items-center gap-2 rounded-md border p-2 text-left text-xs hover:border-primary hover:bg-primary/5 transition-colors"
+                  >
+                    <Icon className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full border-dashed"
+              onClick={() => setShowAddMenu(true)}
+            >
+              <Plus className="h-3.5 w-3.5 mr-2" /> Add section
+            </Button>
+          )}
         </div>
       )}
 
