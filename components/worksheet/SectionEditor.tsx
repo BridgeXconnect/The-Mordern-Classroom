@@ -344,10 +344,15 @@ function TypeFields({
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 shrink-0 text-muted-foreground hover:text-destructive"
+                    disabled={q.options.length <= 2}
                     onClick={() => {
+                      if (q.options.length <= 2) return; // a multiple-choice question needs ≥2 options
                       const options = q.options.filter((_, idx) => idx !== oi);
+                      // Keep correctIndex pointing at a valid option after removal.
                       const correctIndex =
-                        q.correctIndex >= options.length ? Math.max(0, options.length - 1) : q.correctIndex;
+                        q.correctIndex > oi
+                          ? q.correctIndex - 1
+                          : Math.min(q.correctIndex, options.length - 1);
                       updateQ(qi, { options, correctIndex });
                     }}
                     aria-label={`Remove option ${String.fromCharCode(65 + oi)}`}
@@ -388,6 +393,10 @@ function TypeFields({
       const c = section.content as MatchingContent;
       const left = c.leftItems ?? [];
       const right = c.rightItems ?? [];
+      // Default the answer key to row-aligned pairs, clamped so neither index
+      // can reference a row that doesn't exist in its column.
+      const rebuildPairs = (leftLen: number, rightLen: number): [number, number][] =>
+        Array.from({ length: Math.min(leftLen, rightLen) }, (_, i) => [i, i] as [number, number]);
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <StringList
@@ -397,7 +406,7 @@ function TypeFields({
             onChange={(leftItems) =>
               setContent({
                 leftItems,
-                correctPairs: leftItems.map((_, i) => [i, i] as [number, number]),
+                correctPairs: rebuildPairs(leftItems.length, right.length),
               })
             }
           />
@@ -405,7 +414,12 @@ function TypeFields({
             label="Column B"
             items={right}
             placeholder="Right item"
-            onChange={(rightItems) => setContent({ rightItems })}
+            onChange={(rightItems) =>
+              setContent({
+                rightItems,
+                correctPairs: rebuildPairs(left.length, rightItems.length),
+              })
+            }
           />
         </div>
       );
