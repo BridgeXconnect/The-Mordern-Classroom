@@ -60,6 +60,7 @@ enum AtlSkill {
 
 model Class {
   id           String    @id @default(cuid())
+  clerkUserId  String    @default("")
   name         String
   cefrLevel    CefrLevel
   academicYear String
@@ -69,6 +70,7 @@ model Class {
   updatedAt    DateTime  @updatedAt
 
   @@index([cefrLevel])
+  @@index([clerkUserId])
 }
 
 model Unit {
