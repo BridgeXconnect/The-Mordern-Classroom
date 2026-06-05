@@ -2,24 +2,15 @@
 
 import { useEffect, useState } from "react";
 import {
-  DndContext,
-  closestCenter,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
+  DndContext, closestCenter, PointerSensor, KeyboardSensor,
+  useSensor, useSensors, type DragEndEvent,
 } from "@dnd-kit/core";
 import {
-  SortableContext,
-  horizontalListSortingStrategy,
-  arrayMove,
-  useSortable,
-  sortableKeyboardCoordinates,
+  SortableContext, horizontalListSortingStrategy, arrayMove,
+  useSortable, sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { SentenceOrderQuestion } from "@/types/quiz";
 
 interface Props {
@@ -28,11 +19,7 @@ interface Props {
   onAnswer: (order: number[]) => void;
 }
 
-// Each tile keeps its original word index as a stable id.
-interface Tile {
-  id: string;
-  wordIndex: number;
-}
+interface Tile { id: string; wordIndex: number; }
 
 function SortableTile({ tile, label }: { tile: Tile; label: string }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -42,22 +29,25 @@ function SortableTile({ tile, label }: { tile: Tile; label: string }) {
     <button
       ref={setNodeRef}
       type="button"
-      style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={cn(
-        "flex touch-none items-center gap-1.5 rounded-lg border-2 border-border bg-card px-3 py-2 text-sm font-medium shadow-sm",
-        isDragging && "z-10 border-primary opacity-80 shadow-md"
-      )}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        border: isDragging ? "1.5px solid var(--accent-color)" : "1.5px solid var(--border)",
+        background: isDragging ? "var(--accent-soft)" : "var(--surface)",
+        boxShadow: isDragging ? "var(--shadow)" : "var(--shadow-sm)",
+        opacity: isDragging ? 0.85 : 1,
+      }}
+      className="flex touch-none items-center gap-1.5 rounded-[8px] px-3 py-2 text-[13.5px] font-medium"
       {...attributes}
       {...listeners}
     >
-      <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
-      {label}
+      <GripVertical className="h-3.5 w-3.5" style={{ color: "var(--fg-faint)" }} />
+      <span style={{ color: "var(--fg)" }}>{label}</span>
     </button>
   );
 }
 
 export function SentenceOrderQ({ question, value, onAnswer }: Props) {
-  // Initial display order: the shuffled order as given by `words`.
   const initial: Tile[] = (value ?? question.words.map((_, i) => i)).map((wordIndex, k) => ({
     id: `t-${wordIndex}-${k}`,
     wordIndex,
@@ -70,7 +60,6 @@ export function SentenceOrderQ({ question, value, onAnswer }: Props) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
-  // Report the current order (as word indices) on every change.
   useEffect(() => {
     onAnswer(tiles.map((t) => t.wordIndex));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,10 +77,20 @@ export function SentenceOrderQ({ question, value, onAnswer }: Props) {
 
   return (
     <div className="space-y-4">
-      <p className="text-lg font-medium leading-snug">{question.prompt}</p>
-      <p className="text-xs text-muted-foreground">Drag the words into the correct order.</p>
+      <p
+        className="font-serif text-[20px] leading-snug"
+        style={{ color: "var(--fg)", fontWeight: 420 }}
+      >
+        {question.prompt}
+      </p>
+      <p className="font-mono text-[11px] uppercase tracking-[0.1em]" style={{ color: "var(--fg-subtle)" }}>
+        Drag the words into the correct order
+      </p>
 
-      <div className="rounded-xl border bg-muted/30 p-4">
+      <div
+        className="rounded-[12px] p-4"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+      >
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={tiles.map((t) => t.id)} strategy={horizontalListSortingStrategy}>
             <div className="flex flex-wrap gap-2">
@@ -103,7 +102,11 @@ export function SentenceOrderQ({ question, value, onAnswer }: Props) {
         </DndContext>
       </div>
 
-      <p className="rounded-lg bg-accent/50 px-3 py-2 text-sm">
+      {/* Live sentence preview */}
+      <p
+        className="rounded-[8px] px-4 py-3 text-[14px] italic"
+        style={{ background: "var(--accent-soft)", color: "var(--fg)" }}
+      >
         {tiles.map((t) => question.words[t.wordIndex]).join(" ")}
       </p>
     </div>

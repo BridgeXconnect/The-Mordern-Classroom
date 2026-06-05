@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { Input } from "@/components/ui/input";
 import type { FillInBlankQuestion } from "@/types/quiz";
 
 interface Props {
@@ -13,7 +12,6 @@ interface Props {
 export function FillInBlankQ({ question, value, onAnswer }: Props) {
   const [text, setText] = useState(value ?? "");
 
-  // Render the sentence, replacing the ___ gap with the live input value.
   const parts = (question.text ?? "").split(/_{2,}/);
 
   function update(v: string) {
@@ -23,16 +21,29 @@ export function FillInBlankQ({ question, value, onAnswer }: Props) {
 
   return (
     <div className="space-y-4">
-      <p className="text-lg font-medium leading-snug">{question.prompt}</p>
+      <p
+        className="font-serif text-[20px] leading-snug"
+        style={{ color: "var(--fg)", fontWeight: 420 }}
+      >
+        {question.prompt}
+      </p>
 
-      <div className="rounded-xl border bg-muted/30 p-5 text-base leading-relaxed">
+      <div
+        className="rounded-[12px] p-5 text-[15px] leading-relaxed"
+        style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+      >
         {parts.length > 1 ? (
-          <span className="inline">
+          <span className="inline" style={{ color: "var(--fg)" }}>
             {parts[0]}
             <input
               value={text}
               onChange={(e) => update(e.target.value)}
-              className="mx-1 inline-block w-40 border-b-2 border-primary bg-transparent px-1 py-0.5 text-center font-semibold text-primary focus:outline-none"
+              className="mx-2 inline-block w-36 px-1 py-0.5 text-center font-semibold focus:outline-none"
+              style={{
+                borderBottom: "2px solid var(--accent-color)",
+                background: "transparent",
+                color: "var(--accent-color)",
+              }}
               placeholder="…"
               autoComplete="off"
               autoCorrect="off"
@@ -41,7 +52,9 @@ export function FillInBlankQ({ question, value, onAnswer }: Props) {
             {parts.slice(1).join(" ")}
           </span>
         ) : (
-          <Input
+          <input
+            type="text"
+            className="field"
             value={text}
             onChange={(e) => update(e.target.value)}
             placeholder="Type your answer…"
