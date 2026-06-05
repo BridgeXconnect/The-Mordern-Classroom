@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { ClassDetail } from "./ClassDetail";
 
-export default async function ClassDetailPage({ params }: { params: { id: string } }) {
+export default async function ClassDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return null;
 
+  const { id } = await params;
   const cls = await db.class.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       units: {
         orderBy: { order: "asc" },

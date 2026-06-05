@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
-export default function QuizDetailRedirect({ params }: { params: { id: string } }) {
-  redirect(`/library/quizzes/${params.id}/grade`);
+export default async function QuizDetailRedirect({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  redirect(`/library/quizzes/${id}/grade`);
 }

@@ -3,12 +3,13 @@ import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { GradingView } from "./GradingView";
 
-export default async function GradingPage({ params }: { params: { id: string } }) {
+export default async function GradingPage({ params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   if (!userId) return null;
 
+  const { id } = await params;
   const quiz = await db.quiz.findUnique({
-    where: { id: params.id },
+    where: { id },
     include: {
       lesson: { include: { unit: { include: { class: true } } } },
       attempts: { orderBy: { completedAt: "asc" } },
