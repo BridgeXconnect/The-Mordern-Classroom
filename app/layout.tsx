@@ -1,27 +1,62 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Toaster } from "sonner";
+import { Newsreader, JetBrains_Mono, Inter } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-newsreader",
+  display: "swap",
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-jetbrains-mono",
+  display: "swap",
+});
+
+/* Use Inter as the clean sans until Geist package is installed */
+const inter = Inter({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-geist",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "Modern Classroom",
-  description: "AI-powered ESL teaching platform for IB Language B educators",
+  title: "EduForge",
+  description: "AI-powered classroom tools for language educators",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className={inter.className}>
+      <html
+        lang="en"
+        className={`${newsreader.variable} ${jetbrainsMono.variable} ${inter.variable}`}
+        suppressHydrationWarning
+      >
+        <body>
           {children}
-          <Toaster position="top-center" richColors closeButton />
+          <Toaster
+            position="bottom-center"
+            toastOptions={{
+              style: {
+                background: "var(--accent-color)",
+                border: "none",
+                color: "var(--accent-fg)",
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                borderRadius: "10px",
+                padding: "10px 16px",
+                boxShadow: "var(--shadow-lg)",
+              },
+            }}
+          />
         </body>
       </html>
     </ClerkProvider>
