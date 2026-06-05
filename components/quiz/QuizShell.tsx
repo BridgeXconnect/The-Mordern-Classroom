@@ -108,23 +108,46 @@ export function QuizShell({
   }
 
   return (
-    <div className="mx-auto flex min-h-[60vh] w-full max-w-2xl flex-col gap-6 p-4 sm:p-6">
-      {/* Header + progress */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between text-sm">
-          <span className="font-medium text-muted-foreground">
-            {lessonTitle} · {type === "PRE" ? "Pre-quiz" : "Post-quiz"} · {cefrLevel}
-          </span>
-          <span className="tabular-nums text-muted-foreground">
-            {index + 1} / {total}
-          </span>
+    <div
+      className="mx-auto flex min-h-screen w-full max-w-xl flex-col gap-5 p-4 sm:p-6"
+      style={{ background: "var(--bg)" }}
+    >
+      {/* Top bar: close + segmented progress + count */}
+      <div className="flex items-center gap-3 pt-2">
+        <button
+          type="button"
+          className="btn-icon shrink-0"
+          style={{ color: "var(--fg-subtle)" }}
+          onClick={() => window.history.back()}
+          aria-label="Close quiz"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </button>
+
+        {/* Segmented progress */}
+        <div className="flex flex-1 items-center gap-1">
+          {questions.map((q, i) => (
+            <div
+              key={q.id}
+              className="flex-1 rounded-full transition-all duration-300"
+              style={{
+                height: 4,
+                background: i < index
+                  ? "var(--green)"
+                  : i === index
+                  ? "var(--accent-color)"
+                  : "var(--border)",
+              }}
+            />
+          ))}
         </div>
-        <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
-          <div
-            className="h-full rounded-full bg-primary transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+
+        <span
+          className="font-mono text-[11.5px] shrink-0"
+          style={{ color: "var(--fg-subtle)" }}
+        >
+          {index + 1}/{total}
+        </span>
       </div>
 
       {/* Current question */}
@@ -133,59 +156,53 @@ export function QuizShell({
       </div>
 
       {error && (
-        <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">{error}</p>
+        <div
+          className="rounded-[10px] px-4 py-3 text-[13px]"
+          style={{ background: "var(--red-bg)", color: "var(--red)" }}
+        >
+          {error}
+        </div>
       )}
 
-      {/* Navigation */}
-      <div className="flex items-center justify-between gap-3 border-t pt-4">
-        <Button
+      {/* Navigation footer */}
+      <div
+        className="flex items-center justify-between gap-3 pb-6 pt-3"
+        style={{ borderTop: "1px solid var(--border-soft)" }}
+      >
+        <button
           type="button"
-          variant="ghost"
+          className="btn btn-ghost flex items-center gap-1"
           onClick={() => setIndex((i) => Math.max(0, i - 1))}
           disabled={index === 0 || phase === "submitting"}
-          className="gap-1"
+          style={{ opacity: index === 0 ? 0.35 : 1 }}
         >
           <ChevronLeft className="h-4 w-4" /> Back
-        </Button>
-
-        <div className="flex items-center gap-1.5">
-          {questions.map((q, i) => (
-            <span
-              key={q.id}
-              className={cn(
-                "h-1.5 rounded-full transition-all",
-                i === index ? "w-5 bg-primary" : answers[q.id] !== undefined ? "w-1.5 bg-primary/50" : "w-1.5 bg-muted-foreground/25"
-              )}
-            />
-          ))}
-        </div>
+        </button>
 
         {isLast ? (
-          <Button
+          <button
             type="button"
+            className="btn btn-primary flex items-center gap-1.5"
             onClick={submit}
             disabled={phase === "submitting" || answeredCount === 0}
-            className="gap-1.5"
+            style={{ opacity: answeredCount === 0 ? 0.5 : 1 }}
           >
             {phase === "submitting" ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" /> Submitting
-              </>
+              <><Loader2 className="h-4 w-4 animate-spin" /> Submitting</>
             ) : (
-              <>
-                <Send className="h-4 w-4" /> Finish
-              </>
+              <><Send className="h-4 w-4" /> Finish</>
             )}
-          </Button>
+          </button>
         ) : (
-          <Button
+          <button
             type="button"
+            className="btn btn-primary flex items-center gap-1"
             onClick={() => setIndex((i) => Math.min(total - 1, i + 1))}
             disabled={!currentAnswered}
-            className="gap-1"
+            style={{ opacity: !currentAnswered ? 0.5 : 1 }}
           >
             Next <ChevronRight className="h-4 w-4" />
-          </Button>
+          </button>
         )}
       </div>
     </div>

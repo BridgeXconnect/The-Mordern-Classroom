@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { ownedUnit } from "@/lib/ownership";
 
 const SaveLessonSchema = z.object({
   unitId: z.string().cuid(),
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
   if (!unitId) return NextResponse.json({ error: "unitId required" }, { status: 400 });
 
   const lessons = await db.lesson.findMany({
-    where: { unitId },
+    where: { unitId, unit: { class: { clerkUserId: userId } } },
     orderBy: { order: "asc" },
     include: {
       _count: { select: { slides: true, worksheets: true, quizzes: true } },
@@ -41,6 +42,12 @@ export async function POST(req: Request) {
   }
 
   const { unitId, title, objectives, duration, ibAlignment } = parsed.data;
+
+  // Verify the target unit belongs to this user before creating under it.
+  if (!await ownedUnit(unitId, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const count = await db.lesson.count({ where: { unitId } });
   const lesson = await db.lesson.create({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

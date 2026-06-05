@@ -1,8 +1,7 @@
+/* nav-items.ts — kept for MobileNav legacy compat; active nav uses Sidebar.tsx mode system */
 import {
-  GraduationCap,
-  LayoutDashboard,
-  Library,
-  Brain,
+  LayoutGrid, CalendarDays, Inbox, GraduationCap,
+  Sparkles, Library, ClipboardCheck, Headphones,
   type LucideIcon,
 } from "lucide-react";
 
@@ -10,12 +9,16 @@ export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  section: "plan" | "create" | "library";
 }
 
-/** Shared teacher navigation — consumed by the desktop sidebar and mobile drawer. */
 export const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/classes", label: "Classes", icon: GraduationCap },
-  { href: "/quizzes", label: "Quizzes", icon: Brain },
-  { href: "/media", label: "Media", icon: Library },
+  { href: "/plan",             label: "Dashboard",       icon: LayoutGrid,     section: "plan" },
+  { href: "/plan/calendar",    label: "Calendar",        icon: CalendarDays,   section: "plan" },
+  { href: "/plan/attention",   label: "Needs attention", icon: Inbox,          section: "plan" },
+  { href: "/plan/classes",     label: "Classes",         icon: GraduationCap,  section: "plan" },
+  { href: "/create",           label: "Copilot",         icon: Sparkles,       section: "create" },
+  { href: "/library",          label: "All lessons",     icon: Library,        section: "library" },
+  { href: "/library/quizzes",  label: "Quizzes",         icon: ClipboardCheck, section: "library" },
+  { href: "/library/media",    label: "Media",           icon: Headphones,     section: "library" },
 ];

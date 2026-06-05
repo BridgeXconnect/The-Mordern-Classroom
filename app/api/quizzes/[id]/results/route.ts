@@ -12,14 +12,14 @@ export async function GET(
 
   const { id } = await params;
 
-  const quiz = await db.quiz.findUnique({
-    where: { id },
+  const quiz = await db.quiz.findFirst({
+    where: { id, lesson: { unit: { class: { clerkUserId: userId } } } },
     include: {
       lesson: { select: { id: true, title: true } },
       attempts: { orderBy: { completedAt: "desc" } },
     },
   });
-  if (!quiz) return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+  if (!quiz) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const questions = quiz.questions as unknown as QuizQuestion[];
   const totalPoints = questions.reduce((acc, q) => acc + (q.points ?? 1), 0);
@@ -43,12 +43,12 @@ export async function GET(
 
   return NextResponse.json({
     quiz: {
-      id:         quiz.id,
-      type:       quiz.type,
-      cefrLevel:  quiz.cefrLevel,
-      shareToken: quiz.shareToken,
-      isActive:   quiz.isActive,
-      lesson:     quiz.lesson,
+      id:            quiz.id,
+      type:          quiz.type,
+      cefrLevel:     quiz.cefrLevel,
+      shareToken:    quiz.shareToken,
+      isActive:      quiz.isActive,
+      lesson:        quiz.lesson,
       questionCount: questions.length,
       totalPoints,
     },
