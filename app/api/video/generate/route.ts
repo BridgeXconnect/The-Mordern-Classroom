@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { renderHtmlToPng } from "@/lib/puppeteer";
 import { deleteFromR2 } from "@/lib/r2";
+import { ownedLesson } from "@/lib/ownership";
 
 // maxDuration: 60 — set in vercel.json
 
@@ -140,6 +141,12 @@ export async function POST(req: Request) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
   const { templateType, lessonId } = parsed.data;
+
+  // Don't let a caller attach generated media to someone else's lesson.
+  if (lessonId && !(await ownedLesson(lessonId, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   // Use the discriminated union directly — each case narrows `parsed.data.data`
   const rawData = parsed.data.data;
 
@@ -172,6 +179,7 @@ export async function POST(req: Request) {
         prompt,
         filename: url.split("/").pop() ?? "video-preview.png",
         mimeType: "image/png",
+        clerkUserId: userId,
         ...(lessonId ? { lessonId } : {}),
       },
     });

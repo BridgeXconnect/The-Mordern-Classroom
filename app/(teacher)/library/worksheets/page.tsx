@@ -9,7 +9,7 @@ export default async function WorksheetsLibraryPage() {
   if (!userId) return null;
 
   const lessons = await db.lesson.findMany({
-    where: { worksheets: { some: {} } },
+    where: { worksheets: { some: {} }, unit: { class: { clerkUserId: userId } } },
     include: { worksheets: true, unit: { include: { class: true } } },
     orderBy: { updatedAt: "desc" },
   });

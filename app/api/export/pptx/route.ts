@@ -24,8 +24,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const lesson = await db.lesson.findUnique({
-    where: { id: parsed.data.lessonId },
+  const lesson = await db.lesson.findFirst({
+    where: { id: parsed.data.lessonId, unit: { class: { clerkUserId: userId } } },
     include: {
       slides: { orderBy: { order: "asc" } },
       unit: { include: { class: true } },

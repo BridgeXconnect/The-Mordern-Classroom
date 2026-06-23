@@ -8,6 +8,7 @@ export default async function PlanPage() {
 
   const [classes, recentLessons] = await Promise.all([
     db.class.findMany({
+      where: { clerkUserId: userId },
       orderBy: { name: "asc" },
       include: {
         units: {
@@ -18,6 +19,7 @@ export default async function PlanPage() {
       },
     }),
     db.lesson.findMany({
+      where: { unit: { class: { clerkUserId: userId } } },
       take: 5,
       orderBy: { createdAt: "desc" },
       include: { unit: { include: { class: true } } },

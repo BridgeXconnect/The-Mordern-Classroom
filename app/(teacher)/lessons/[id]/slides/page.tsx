@@ -14,8 +14,8 @@ export default async function SlidesPage({
 
   const { id } = await params;
 
-  const lesson = await db.lesson.findUnique({
-    where: { id },
+  const lesson = await db.lesson.findFirst({
+    where: { id, unit: { class: { clerkUserId: userId } } },
     include: {
       slides: { orderBy: { order: "asc" } },
       unit: { include: { class: true } },

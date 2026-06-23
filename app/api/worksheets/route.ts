@@ -11,7 +11,7 @@ export async function GET(req: Request) {
   if (!lessonId) return NextResponse.json({ error: "lessonId required" }, { status: 400 });
 
   const worksheets = await db.worksheet.findMany({
-    where: { lessonId },
+    where: { lessonId, lesson: { unit: { class: { clerkUserId: userId } } } },
     orderBy: { createdAt: "desc" },
   });
 

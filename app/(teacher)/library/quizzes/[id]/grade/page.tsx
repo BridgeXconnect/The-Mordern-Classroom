@@ -8,8 +8,8 @@ export default async function GradingPage({ params }: { params: Promise<{ id: st
   if (!userId) return null;
 
   const { id } = await params;
-  const quiz = await db.quiz.findUnique({
-    where: { id },
+  const quiz = await db.quiz.findFirst({
+    where: { id, lesson: { unit: { class: { clerkUserId: userId } } } },
     include: {
       lesson: { include: { unit: { include: { class: true } } } },
       attempts: { orderBy: { completedAt: "asc" } },

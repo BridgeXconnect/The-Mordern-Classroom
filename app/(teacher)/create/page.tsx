@@ -7,6 +7,7 @@ export default async function CreatePage() {
   if (!userId) return null;
 
   const classes = await db.class.findMany({
+    where: { clerkUserId: userId },
     orderBy: { name: "asc" },
     select: { id: true, name: true, cefrLevel: true },
   });

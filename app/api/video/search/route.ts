@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { searchYouTube } from "@/lib/youtube";
+import { ownedLesson } from "@/lib/ownership";
 import type { CefrLevel } from "@prisma/client";
 
 const QuerySchema = z.object({
@@ -26,6 +27,11 @@ export async function GET(req: Request) {
   }
 
   const { q, cefrLevel, lessonId } = parsed.data;
+
+  // If attaching results to a lesson, verify the caller owns it.
+  if (lessonId && !(await ownedLesson(lessonId, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   // ── Cache check ───────────────────────────────────────────────────────────
   // Prompt = "<q>|<cefrLevel>" — unique per (query, level) pair

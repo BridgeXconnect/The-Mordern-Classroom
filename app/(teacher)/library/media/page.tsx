@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { db } from "@/lib/db";
+import { ownedMediaWhere } from "@/lib/ownership";
 import { PageHead } from "@/components/ui/ef-primitives";
 
 export default async function MediaLibraryPage() {
@@ -7,6 +8,7 @@ export default async function MediaLibraryPage() {
   if (!userId) return null;
 
   const assets = await db.mediaAsset.findMany({
+    where: ownedMediaWhere(userId),
     orderBy: { createdAt: "desc" },
     include: { lesson: { include: { unit: { include: { class: true } } } } } as const,
   });
