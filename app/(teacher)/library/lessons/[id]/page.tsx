@@ -8,8 +8,8 @@ export default async function LessonDetailPage({ params }: { params: Promise<{ i
   if (!userId) return null;
 
   const { id } = await params;
-  const lesson = await db.lesson.findUnique({
-    where: { id },
+  const lesson = await db.lesson.findFirst({
+    where: { id, unit: { class: { clerkUserId: userId } } },
     include: {
       unit: { include: { class: true } },
       slides: { orderBy: { order: "asc" } },

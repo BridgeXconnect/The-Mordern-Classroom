@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { searchYouTube } from "@/lib/youtube";
+import { ownedLesson } from "@/lib/ownership";
 import type { CefrLevel } from "@prisma/client";
 
 const QuerySchema = z.object({
@@ -27,6 +28,23 @@ export async function GET(req: Request) {
 
   const { q, cefrLevel, lessonId } = parsed.data;
 
+  // A passed lessonId must belong to the caller (kept for a clean 404 contract),
+  // but it is intentionally NOT written onto the shared cache rows below.
+  if (lessonId && !(await ownedLesson(lessonId, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // VIDEO_EMBED rows are a *global*, query-keyed cache of public YouTube results
+  // shared across all teachers — they carry no owner and no lessonId. Only ever
+  // expose public fields so a cache hit can't surface another teacher's data.
+  const toVideo = (a: {
+    id: string; type: string; url: string; prompt: string | null;
+    filename: string | null; mimeType: string | null; createdAt: Date;
+  }) => ({
+    id: a.id, type: a.type, url: a.url, prompt: a.prompt,
+    filename: a.filename, mimeType: a.mimeType, createdAt: a.createdAt,
+  });
+
   // ── Cache check ───────────────────────────────────────────────────────────
   // Prompt = "<q>|<cefrLevel>" — unique per (query, level) pair
   const cacheKey = `${q.toLowerCase().trim()}|${cefrLevel}`;
@@ -38,7 +56,7 @@ export async function GET(req: Request) {
   });
 
   if (cached.length > 0) {
-    return NextResponse.json({ videos: cached, fromCache: true });
+    return NextResponse.json({ videos: cached.map(toVideo), fromCache: true });
   }
 
   // ── Cache miss — call YouTube Data API v3 ─────────────────────────────────
@@ -66,7 +84,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ videos: [], fromCache: false });
   }
 
-  // ── Persist to DB (cache fill) ────────────────────────────────────────────
+  // ── Persist to DB (shared cache fill — no owner, no lessonId) ─────────────
   const created = await db.$transaction(
     results.map((v) =>
       db.mediaAsset.create({
@@ -76,7 +94,6 @@ export async function GET(req: Request) {
           prompt:   cacheKey,
           filename: v.title,
           mimeType: "video/youtube",
-          ...(lessonId ? { lessonId } : {}),
         },
       })
     )
@@ -90,5 +107,5 @@ export async function GET(req: Request) {
     ])
   );
 
-  return NextResponse.json({ videos: created, fromCache: false, meta });
+  return NextResponse.json({ videos: created.map(toVideo), fromCache: false, meta });
 }

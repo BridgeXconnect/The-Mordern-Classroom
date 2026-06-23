@@ -11,6 +11,7 @@ export default async function ClassesPage() {
   if (!userId) return null;
 
   const classes = await db.class.findMany({
+    where: { clerkUserId: userId },
     orderBy: { name: "asc" },
     include: {
       units: {

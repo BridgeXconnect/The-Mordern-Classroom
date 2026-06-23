@@ -8,7 +8,7 @@ export default async function SlidesLibraryPage() {
   if (!userId) return null;
 
   const lessons = await db.lesson.findMany({
-    where: { slides: { some: {} } },
+    where: { slides: { some: {} }, unit: { class: { clerkUserId: userId } } },
     include: { slides: true, unit: { include: { class: true } } },
     orderBy: { updatedAt: "desc" },
   });

@@ -50,15 +50,23 @@ export async function ownedQuiz(id: string, userId: string) {
   });
 }
 
-/** MediaAsset whose ancestor Class is owned by userId (or unlinked assets owned by anyone) */
+/**
+ * MediaAsset owned by userId — either directly (clerkUserId) or via the lesson
+ * it is attached to. Shared cache rows (clerkUserId null, lessonId null) are
+ * owned by no one and are intentionally not returned here.
+ */
 export async function ownedMediaAsset(id: string, userId: string) {
   return db.mediaAsset.findFirst({
-    where: {
-      id,
-      OR: [
-        { lesson: { unit: { class: { clerkUserId: userId } } } },
-        { lessonId: null },
-      ],
-    },
+    where: { id, ...ownedMediaWhere(userId) },
   });
+}
+
+/** Prisma `where` fragment matching media assets owned by userId (direct or via lesson). */
+export function ownedMediaWhere(userId: string) {
+  return {
+    OR: [
+      { clerkUserId: userId },
+      { lesson: { unit: { class: { clerkUserId: userId } } } },
+    ],
+  };
 }

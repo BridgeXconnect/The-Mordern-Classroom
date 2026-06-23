@@ -8,6 +8,7 @@ export default async function QuizzesDashboardPage() {
   if (!userId) return null;
 
   const quizzes = await db.quiz.findMany({
+    where: { lesson: { unit: { class: { clerkUserId: userId } } } },
     orderBy: { createdAt: "desc" },
     include: {
       lesson: { include: { unit: { include: { class: true } } } },

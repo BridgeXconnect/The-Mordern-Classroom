@@ -38,8 +38,8 @@ export async function POST(req: Request) {
 
   const { lessonId, sectionTypes, additionalNotes } = parsed.data;
 
-  const lesson = await db.lesson.findUnique({
-    where: { id: lessonId },
+  const lesson = await db.lesson.findFirst({
+    where: { id: lessonId, unit: { class: { clerkUserId: userId } } },
     include: { unit: { include: { class: true } } },
   });
   if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });

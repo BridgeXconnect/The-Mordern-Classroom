@@ -7,6 +7,7 @@ export default async function LibraryPage() {
   if (!userId) return null;
 
   const lessons = await db.lesson.findMany({
+    where: { unit: { class: { clerkUserId: userId } } },
     orderBy: { updatedAt: "desc" },
     include: {
       unit: { include: { class: true } },

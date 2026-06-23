@@ -27,8 +27,8 @@ export async function POST(req: Request) {
   const { lessonId, slideCount, includeVocabulary, includeGrammar, includeActivity } = parsed.data;
 
   // Fetch lesson context
-  const lesson = await db.lesson.findUnique({
-    where: { id: lessonId },
+  const lesson = await db.lesson.findFirst({
+    where: { id: lessonId, unit: { class: { clerkUserId: userId } } },
     include: { unit: { include: { class: true } } },
   });
   if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });

@@ -19,8 +19,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const worksheet = await db.worksheet.findUnique({
-    where: { id: parsed.data.worksheetId },
+  const worksheet = await db.worksheet.findFirst({
+    where: {
+      id: parsed.data.worksheetId,
+      lesson: { unit: { class: { clerkUserId: userId } } },
+    },
     include: { lesson: { include: { unit: { include: { class: true } } } } },
   });
   if (!worksheet) return NextResponse.json({ error: "Worksheet not found" }, { status: 404 });

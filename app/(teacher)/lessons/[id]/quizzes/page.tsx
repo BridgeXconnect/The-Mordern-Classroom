@@ -15,8 +15,8 @@ export default async function LessonQuizzesPage({
 
   const { id } = await params;
 
-  const lesson = await db.lesson.findUnique({
-    where: { id },
+  const lesson = await db.lesson.findFirst({
+    where: { id, unit: { class: { clerkUserId: userId } } },
     include: {
       unit: { include: { class: true } },
       quizzes: {

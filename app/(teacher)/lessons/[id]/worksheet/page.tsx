@@ -15,8 +15,8 @@ export default async function WorksheetPage({
 
   const { id } = await params;
 
-  const lesson = await db.lesson.findUnique({
-    where: { id },
+  const lesson = await db.lesson.findFirst({
+    where: { id, unit: { class: { clerkUserId: userId } } },
     include: {
       worksheets: { orderBy: { createdAt: "desc" }, take: 1 },
       unit: { include: { class: true } },
