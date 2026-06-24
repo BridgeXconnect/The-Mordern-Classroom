@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { ownedSlide } from "@/lib/ownership";
 
 const UpdateSlideSchema = z.object({
   type: z.enum(["TITLE", "CONTENT", "IMAGE", "VOCABULARY", "GRAMMAR", "ACTIVITY"]).optional(),
@@ -17,18 +18,18 @@ export async function PUT(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!await ownedSlide(id, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const body = await req.json();
   const parsed = UpdateSlideSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const slide = await db.slide.update({
-    where: { id },
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    data: parsed.data as any,
-  });
-
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const slide = await db.slide.update({ where: { id }, data: parsed.data as any });
   return NextResponse.json(slide);
 }
 
@@ -40,6 +41,10 @@ export async function DELETE(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!await ownedSlide(id, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   await db.slide.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

@@ -15,6 +15,7 @@ export async function GET() {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const classes = await db.class.findMany({
+    where: { clerkUserId: userId },
     orderBy: { createdAt: "desc" },
     include: {
       _count: { select: { units: true } },
@@ -37,6 +38,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const newClass = await db.class.create({ data: parsed.data });
+  const newClass = await db.class.create({
+    data: { ...parsed.data, clerkUserId: userId },
+  });
   return NextResponse.json(newClass, { status: 201 });
 }

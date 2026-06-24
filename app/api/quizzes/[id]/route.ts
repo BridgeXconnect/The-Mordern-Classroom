@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { ownedQuiz } from "@/lib/ownership";
 import { QuestionsArraySchema } from "@/lib/quiz-validation";
 import type { Prisma } from "@prisma/client";
 
@@ -22,17 +23,17 @@ export async function PUT(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!await ownedQuiz(id, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const body = await req.json();
   const parsed = UpdateSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const existing = await db.quiz.findUnique({ where: { id }, select: { id: true } });
-  if (!existing) return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
-
   const { isActive, expiresAt, questions } = parsed.data;
-
   const data: Prisma.QuizUpdateInput = {};
   if (isActive !== undefined) data.isActive = isActive;
   if (expiresAt !== undefined) data.expiresAt = expiresAt ? new Date(expiresAt) : null;
@@ -53,10 +54,10 @@ export async function DELETE(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const existing = await db.quiz.findUnique({ where: { id }, select: { id: true } });
-  if (!existing) return NextResponse.json({ error: "Quiz not found" }, { status: 404 });
+  if (!await ownedQuiz(id, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
-  // QuizAttempt rows cascade-delete via the schema relation.
   await db.quiz.delete({ where: { id } });
   return NextResponse.json({ ok: true });
 }

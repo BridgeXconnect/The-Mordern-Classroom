@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { ownedUnit } from "@/lib/ownership";
 
 const UpdateUnitSchema = z.object({
   title: z.string().min(1).max(150).optional(),
@@ -18,6 +19,10 @@ export async function PUT(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!await ownedUnit(id, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const body = await req.json();
   const parsed = UpdateUnitSchema.safeParse(body);
   if (!parsed.success) {
@@ -36,6 +41,10 @@ export async function DELETE(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!await ownedUnit(id, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   await db.unit.delete({ where: { id } });
   return new Response(null, { status: 204 });
 }

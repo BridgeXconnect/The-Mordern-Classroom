@@ -1,52 +1,54 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { UserButton } from "@clerk/nextjs";
-import Link from "next/link";
-import { BookOpen } from "lucide-react";
-import { NAV_ITEMS } from "./nav-items";
+import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
 import { MobileNav } from "./MobileNav";
+import { ThemeProvider } from "@/components/ThemeProvider";
 
 export default async function TeacherLayout({ children }: { children: React.ReactNode }) {
   const { userId } = await auth();
   if (!userId) redirect("/sign-in");
 
   return (
-    <div className="flex min-h-screen bg-background">
-      {/* Sidebar (desktop) */}
-      <aside className="hidden md:flex w-56 flex-col border-r bg-card">
-        <div className="flex h-14 items-center gap-2 border-b px-4">
-          <BookOpen className="h-5 w-5 text-primary" />
-          <span className="font-semibold text-sm">Modern Classroom</span>
+    <ThemeProvider>
+      <div className="flex h-screen overflow-hidden" style={{ background: "var(--bg)" }}>
+        {/* Desktop sidebar */}
+        <div className="hidden md:flex h-full shrink-0">
+          <Sidebar />
         </div>
-        <nav className="flex-1 space-y-1 p-3">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-            >
-              <Icon className="h-4 w-4" />
-              {label}
-            </Link>
-          ))}
-        </nav>
-        <div className="border-t p-3">
-          <UserButton afterSignOutUrl="/sign-in" />
-        </div>
-      </aside>
 
-      <div className="flex flex-1 flex-col">
-        {/* Header (mobile) */}
-        <header className="flex h-14 items-center justify-between border-b px-4 md:hidden">
-          <div className="flex items-center gap-2">
-            <MobileNav />
-            <BookOpen className="h-5 w-5 text-primary" />
-            <span className="font-semibold text-sm">Modern Classroom</span>
+        {/* Main column */}
+        <div className="flex flex-1 flex-col overflow-hidden min-w-0">
+          {/* Top bar (desktop) */}
+          <div className="hidden md:block shrink-0">
+            <TopBar />
           </div>
-          <UserButton afterSignOutUrl="/sign-in" />
-        </header>
-        <main className="flex-1 overflow-auto p-4 sm:p-6">{children}</main>
+
+          {/* Mobile header */}
+          <header
+            className="flex h-[52px] shrink-0 items-center justify-between px-4 md:hidden"
+            style={{
+              borderBottom: "1px solid var(--border)",
+              background: "var(--surface-2)",
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <MobileNav />
+              <span className="font-serif text-[14px] font-medium" style={{ color: "var(--fg)" }}>
+                EduForge
+              </span>
+            </div>
+          </header>
+
+          {/* Page content */}
+          <main
+            className="flex-1 overflow-y-auto"
+            style={{ padding: "30px 30px 60px" }}
+          >
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </ThemeProvider>
   );
 }

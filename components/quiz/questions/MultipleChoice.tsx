@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 import type { MultipleChoiceQuestion } from "@/types/quiz";
 
 interface Props {
@@ -21,8 +20,14 @@ export function MultipleChoiceQ({ question, value, onAnswer }: Props) {
   }
 
   return (
-    <div className="space-y-3">
-      <p className="text-lg font-medium leading-snug">{question.prompt}</p>
+    <div className="space-y-4">
+      <p
+        className="font-serif text-[20px] leading-snug"
+        style={{ color: "var(--fg)", fontWeight: 420 }}
+      >
+        {question.prompt}
+      </p>
+
       <div className="grid gap-2.5">
         {question.options.map((opt, i) => {
           const active = selected === i;
@@ -31,22 +36,25 @@ export function MultipleChoiceQ({ question, value, onAnswer }: Props) {
               key={i}
               type="button"
               onClick={() => choose(i)}
-              className={cn(
-                "flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-all",
-                active
-                  ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                  : "border-border hover:border-primary/40 hover:bg-accent"
-              )}
+              className="flex items-center gap-3 rounded-[12px] px-4 py-3.5 text-left transition-all"
+              style={{
+                border: active
+                  ? "1.5px solid var(--accent-color)"
+                  : "1.5px solid var(--border)",
+                background: active ? "var(--accent-soft)" : "var(--surface)",
+                boxShadow: active ? "var(--shadow-sm)" : "none",
+              }}
             >
               <span
-                className={cn(
-                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-sm font-bold",
-                  active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                )}
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[7px] font-mono text-[12px] font-bold transition-all"
+                style={{
+                  background: active ? "var(--accent-color)" : "var(--surface-2)",
+                  color: active ? "var(--accent-fg)" : "var(--fg-subtle)",
+                }}
               >
                 {LETTERS[i] ?? i + 1}
               </span>
-              <span className="text-sm">{opt}</span>
+              <span className="text-[14px]" style={{ color: "var(--fg)" }}>{opt}</span>
             </button>
           );
         })}

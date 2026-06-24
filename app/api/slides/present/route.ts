@@ -16,8 +16,8 @@ export async function GET(req: Request) {
   const lessonId = searchParams.get("lessonId");
   if (!lessonId) return new NextResponse("lessonId required", { status: 400 });
 
-  const lesson = await db.lesson.findUnique({
-    where: { id: lessonId },
+  const lesson = await db.lesson.findFirst({
+    where: { id: lessonId, unit: { class: { clerkUserId: userId } } },
     include: {
       slides: { orderBy: { order: "asc" } },
       unit: { include: { class: true } },

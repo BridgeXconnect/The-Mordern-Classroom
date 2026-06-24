@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { ownedLesson } from "@/lib/ownership";
 
 const UpdateLessonSchema = z.object({
   title: z.string().min(1).max(200).optional(),
@@ -18,8 +19,8 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
-  const lesson = await db.lesson.findUnique({
-    where: { id },
+  const lesson = await db.lesson.findFirst({
+    where: { id, unit: { class: { clerkUserId: userId } } },
     include: {
       unit: { include: { class: true } },
       _count: { select: { slides: true, worksheets: true, quizzes: true, mediaAssets: true } },
@@ -38,6 +39,10 @@ export async function PUT(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!await ownedLesson(id, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   const body = await req.json();
   const parsed = UpdateLessonSchema.safeParse(body);
   if (!parsed.success) {
@@ -56,6 +61,10 @@ export async function DELETE(
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const { id } = await params;
+  if (!await ownedLesson(id, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   await db.lesson.delete({ where: { id } });
   return new Response(null, { status: 204 });
 }

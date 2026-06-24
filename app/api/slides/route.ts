@@ -20,7 +20,7 @@ export async function GET(req: Request) {
   if (!lessonId) return NextResponse.json({ error: "lessonId required" }, { status: 400 });
 
   const slides = await db.slide.findMany({
-    where: { lessonId },
+    where: { lessonId, lesson: { unit: { class: { clerkUserId: userId } } } },
     orderBy: { order: "asc" },
   });
 

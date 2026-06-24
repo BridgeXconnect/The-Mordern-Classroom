@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { renderHtmlToPng } from "@/lib/puppeteer";
 import { deleteFromR2 } from "@/lib/r2";
+import { ownedLesson } from "@/lib/ownership";
 import type { InfographicTemplate } from "@/types/media";
 
 // maxDuration: 60 — set in vercel.json
@@ -137,6 +138,11 @@ export async function POST(req: Request) {
 
   const { templateType, lessonId, data } = parsed.data;
 
+  // Don't let a caller attach generated media to someone else's lesson.
+  if (lessonId && !(await ownedLesson(lessonId, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   let html: string;
 
   switch (templateType) {
@@ -161,6 +167,7 @@ export async function POST(req: Request) {
         prompt:    `${templateType}: ${data.title}`,
         filename:  url.split("/").pop() ?? "infographic.png",
         mimeType:  "image/png",
+        clerkUserId: userId,
         ...(lessonId ? { lessonId } : {}),
       },
     });

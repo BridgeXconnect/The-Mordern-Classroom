@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { ownedClass } from "@/lib/ownership";
 
 const CreateUnitSchema = z.object({
   classId: z.string().cuid(),
@@ -20,7 +21,7 @@ export async function GET(req: Request) {
   if (!classId) return NextResponse.json({ error: "classId required" }, { status: 400 });
 
   const units = await db.unit.findMany({
-    where: { classId },
+    where: { classId, class: { clerkUserId: userId } },
     orderBy: { order: "asc" },
     include: {
       lessons: { orderBy: { order: "asc" } },
@@ -41,10 +42,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const count = await db.unit.count({ where: { classId: parsed.data.classId } });
-  const unit = await db.unit.create({
-    data: { ...parsed.data, order: count },
-  });
+  // Verify the target class belongs to this user before creating under it.
+  if (!await ownedClass(parsed.data.classId, userId)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
+  const count = await db.unit.count({ where: { classId: parsed.data.classId } });
+  const unit = await db.unit.create({ data: { ...parsed.data, order: count } });
   return NextResponse.json(unit, { status: 201 });
 }

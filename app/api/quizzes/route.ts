@@ -5,6 +5,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { QuestionsArraySchema } from "@/lib/quiz-validation";
 import { getOrCreateSpeech } from "@/lib/tts";
+import { ownedLesson } from "@/lib/ownership";
 import type { Prisma } from "@prisma/client";
 
 const CreateSchema = z.object({
@@ -20,8 +21,9 @@ export async function GET() {
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  // All quizzes overview with attempt counts + lesson context.
+  // All of the caller's quizzes, with attempt counts + lesson context.
   const quizzes = await db.quiz.findMany({
+    where: { lesson: { unit: { class: { clerkUserId: userId } } } },
     orderBy: { createdAt: "desc" },
     include: {
       lesson: { select: { id: true, title: true } },
@@ -44,9 +46,10 @@ export async function POST(req: Request) {
 
   const { lessonId, type, cefrLevel, questions, isActive, expiresAt } = parsed.data;
 
-  // Verify the lesson exists before creating a quiz against it.
-  const lesson = await db.lesson.findUnique({ where: { id: lessonId }, select: { id: true } });
-  if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
+  // Verify the lesson exists AND belongs to the caller before creating a quiz against it.
+  if (!(await ownedLesson(lessonId, userId))) {
+    return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
+  }
 
   // Assign a stable id to each question (used for answer matching at scoring time).
   const withIds = questions.map((q) => ({ ...q, id: q.id ?? randomUUID() }));

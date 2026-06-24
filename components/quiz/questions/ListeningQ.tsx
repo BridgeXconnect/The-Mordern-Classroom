@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Volume2, Play, Square, ChevronDown } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import type { ListeningQuestion } from "@/types/quiz";
 
 interface Props {
@@ -21,11 +19,7 @@ export function ListeningQ({ question, value, onAnswer }: Props) {
   const [showTranscript, setShowTranscript] = useState(false);
 
   useEffect(() => {
-    return () => {
-      if (typeof window !== "undefined" && window.speechSynthesis) {
-        window.speechSynthesis.cancel();
-      }
-    };
+    return () => { if (typeof window !== "undefined" && window.speechSynthesis) window.speechSynthesis.cancel(); };
   }, []);
 
   function choose(subIndex: number, optionIndex: number) {
@@ -35,14 +29,9 @@ export function ListeningQ({ question, value, onAnswer }: Props) {
     onAnswer(next);
   }
 
-  // Browser-voice fallback until Phase 7 generates real TTS audio.
   function speak() {
     if (typeof window === "undefined" || !window.speechSynthesis) return;
-    if (speaking) {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-      return;
-    }
+    if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
     const utter = new SpeechSynthesisUtterance(question.audioText);
     utter.rate = 0.9;
     utter.lang = "en-US";
@@ -54,36 +43,48 @@ export function ListeningQ({ question, value, onAnswer }: Props) {
 
   return (
     <div className="space-y-4">
-      <p className="text-lg font-medium leading-snug">{question.prompt}</p>
+      <p className="font-serif text-[20px] leading-snug" style={{ color: "var(--fg)", fontWeight: 420 }}>
+        {question.prompt}
+      </p>
 
       {/* Audio player */}
-      <div className="rounded-xl border bg-muted/30 p-4">
+      <div className="rounded-[12px] p-4 space-y-3" style={{ background: "var(--surface)", border: "1px solid var(--border)" }}>
         {question.audioUrl ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
           <audio controls src={question.audioUrl} className="w-full" />
         ) : (
-          <div className="space-y-2">
+          <>
             <div className="flex items-center gap-3">
-              <Button type="button" variant="secondary" size="sm" onClick={speak} className="gap-1.5">
+              <button
+                type="button"
+                onClick={speak}
+                className="btn btn-ghost btn-sm flex items-center gap-1.5"
+              >
                 {speaking ? <Square className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                 {speaking ? "Stop" : "Listen"}
-              </Button>
-              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                <Volume2 className="h-3.5 w-3.5" /> Played with your browser voice
+              </button>
+              <span className="flex items-center gap-1.5 font-mono text-[11px]" style={{ color: "var(--fg-subtle)" }}>
+                <Volume2 className="h-3.5 w-3.5" /> Browser voice
               </span>
             </div>
             <button
               type="button"
               onClick={() => setShowTranscript((s) => !s)}
-              className="flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
+              className="flex items-center gap-1 font-mono text-[11px]"
+              style={{ color: "var(--fg-subtle)" }}
             >
-              <ChevronDown className={cn("h-3 w-3 transition-transform", showTranscript && "rotate-180")} />
+              <ChevronDown
+                className="h-3 w-3 transition-transform"
+                style={{ transform: showTranscript ? "rotate(180deg)" : undefined }}
+              />
               {showTranscript ? "Hide" : "Show"} transcript
             </button>
             {showTranscript && (
-              <p className="rounded-lg bg-background p-3 text-sm leading-relaxed">{question.audioText}</p>
+              <p className="rounded-[8px] p-3 text-[13.5px] leading-relaxed" style={{ background: "var(--surface-2)", color: "var(--fg-muted)" }}>
+                {question.audioText}
+              </p>
             )}
-          </div>
+          </>
         )}
       </div>
 
@@ -91,7 +92,7 @@ export function ListeningQ({ question, value, onAnswer }: Props) {
       <div className="space-y-5">
         {subs.map((sub, si) => (
           <div key={si} className="space-y-2.5">
-            <p className="text-sm font-medium">
+            <p className="text-[13.5px] font-medium" style={{ color: "var(--fg)" }}>
               {si + 1}. {sub.prompt}
             </p>
             <div className="grid gap-2">
@@ -102,22 +103,22 @@ export function ListeningQ({ question, value, onAnswer }: Props) {
                     key={oi}
                     type="button"
                     onClick={() => choose(si, oi)}
-                    className={cn(
-                      "flex items-center gap-2.5 rounded-lg border-2 px-3 py-2 text-left text-sm transition-all",
-                      active
-                        ? "border-primary bg-primary/5 ring-2 ring-primary/20"
-                        : "border-border hover:border-primary/40 hover:bg-accent"
-                    )}
+                    className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 text-left text-[13.5px] transition-all"
+                    style={{
+                      border: active ? "1.5px solid var(--accent-color)" : "1.5px solid var(--border)",
+                      background: active ? "var(--accent-soft)" : "var(--surface)",
+                    }}
                   >
                     <span
-                      className={cn(
-                        "flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs font-bold",
-                        active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                      )}
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded font-mono text-[11px] font-bold"
+                      style={{
+                        background: active ? "var(--accent-color)" : "var(--surface-2)",
+                        color: active ? "var(--accent-fg)" : "var(--fg-subtle)",
+                      }}
                     >
                       {LETTERS[oi] ?? oi + 1}
                     </span>
-                    {opt}
+                    <span style={{ color: "var(--fg)" }}>{opt}</span>
                   </button>
                 );
               })}

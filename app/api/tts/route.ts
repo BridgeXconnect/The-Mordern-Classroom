@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getOrCreateSpeech } from "@/lib/tts";
 import { TTS_VOICE_IDS } from "@/lib/tts-voices";
+import { ownedLesson } from "@/lib/ownership";
 
 // maxDuration: 30 — set in vercel.json (synthesis + R2 upload).
 
@@ -31,6 +32,14 @@ export async function POST(req: Request) {
   const parsed = BodySchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
+  }
+
+  // Any lessonId attached to the audio must belong to the caller.
+  const items = "items" in parsed.data ? parsed.data.items : [parsed.data];
+  const lessonIds = [...new Set(items.map((it) => it.lessonId).filter(Boolean))] as string[];
+  const ownerships = await Promise.all(lessonIds.map((id) => ownedLesson(id, userId)));
+  if (ownerships.some((owned) => !owned)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   try {

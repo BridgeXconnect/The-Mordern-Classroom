@@ -60,6 +60,7 @@ enum AtlSkill {
 
 model Class {
   id           String    @id @default(cuid())
+  clerkUserId  String
   name         String
   cefrLevel    CefrLevel
   academicYear String
@@ -69,6 +70,7 @@ model Class {
   updatedAt    DateTime  @updatedAt
 
   @@index([cefrLevel])
+  @@index([clerkUserId])
 }
 
 model Unit {
@@ -168,6 +170,10 @@ model QuizAttempt {
 
 model MediaAsset {
   id        String    @id @default(cuid())
+  // Owner of a user-library asset. NULL marks a shared, content-addressed cache
+  // row (YouTube embed cache keyed by query, TTS audio keyed by content hash)
+  // that belongs to no single user. Set on "save to my library" generations.
+  clerkUserId String?
   lessonId  String?
   lesson    Lesson?   @relation(fields: [lessonId], references: [id], onDelete: SetNull)
   type      MediaType
@@ -178,6 +184,7 @@ model MediaAsset {
   sizeBytes Int?
   createdAt DateTime  @default(now())
 
+  @@index([clerkUserId])
   @@index([lessonId])
   @@index([type])
 }

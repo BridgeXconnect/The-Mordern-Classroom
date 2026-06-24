@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { uploadToR2, deleteFromR2 } from "@/lib/r2";
+import { ownedLesson } from "@/lib/ownership";
 
 const Schema = z.object({
   prompt:   z.string().min(5).max(500),
@@ -45,6 +46,11 @@ export async function POST(req: Request) {
 
   const { prompt, lessonId, source } = parsed.data;
 
+  // Don't let a caller attach generated media to someone else's lesson.
+  if (lessonId && !(await ownedLesson(lessonId, userId))) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
   let buffer: Buffer;
   let usedSource = source;
 
@@ -71,6 +77,7 @@ export async function POST(req: Request) {
         filename:  url.split("/").pop() ?? "image.jpg",
         mimeType:  "image/jpeg",
         sizeBytes: buffer.byteLength,
+        clerkUserId: userId,
         ...(lessonId ? { lessonId } : {}),
       },
     });

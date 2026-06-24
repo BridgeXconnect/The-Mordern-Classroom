@@ -2,8 +2,9 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { chatJSON, cefrLabel, MODELS } from "@/lib/openrouter";
-import type { GeneratedSlides, SlideData } from "@/types/slide";
+import { NoObjectGeneratedError } from "ai";
+import { generateStructured, cefrLabel, MODELS } from "@/lib/openrouter";
+import { GeneratedSlidesSchema } from "@/lib/slide-validation";
 import type { LessonObjective } from "@/types/lesson";
 
 const GenerateSlidesSchema = z.object({
@@ -27,8 +28,8 @@ export async function POST(req: Request) {
   const { lessonId, slideCount, includeVocabulary, includeGrammar, includeActivity } = parsed.data;
 
   // Fetch lesson context
-  const lesson = await db.lesson.findUnique({
-    where: { id: lessonId },
+  const lesson = await db.lesson.findFirst({
+    where: { id: lessonId, unit: { class: { clerkUserId: userId } } },
     include: { unit: { include: { class: true } } },
   });
   if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
@@ -80,20 +81,32 @@ For each slide return this JSON structure:
 
 Return: { "slides": [ ...slide objects ] }`;
 
-  const generated = await chatJSON<GeneratedSlides>(
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    { model: MODELS.STRUCTURED, temperature: 0.7 }
-  );
+  let generated;
+  try {
+    generated = await generateStructured(
+      GeneratedSlidesSchema,
+      systemPrompt,
+      userPrompt,
+      { model: MODELS.STRUCTURED, temperature: 0.7 }
+    );
+  } catch (err) {
+    if (NoObjectGeneratedError.isInstance(err)) {
+      console.error("Generated slides failed validation:", err);
+      return NextResponse.json(
+        { error: "Generated slides did not match the expected format. Try again." },
+        { status: 422 }
+      );
+    }
+    console.error("Slide generation LLM call failed:", err);
+    return NextResponse.json({ error: "Slide generation failed" }, { status: 502 });
+  }
 
   // Delete existing slides for this lesson
   await db.slide.deleteMany({ where: { lessonId } });
 
   // Save new slides
   const saved = await db.$transaction(
-    generated.slides.map((slide: SlideData, i: number) =>
+    generated.slides.map((slide, i) =>
       db.slide.create({
         data: {
           lessonId,

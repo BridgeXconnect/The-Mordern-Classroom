@@ -2,9 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { chatJSON, cefrLabel, MODELS } from "@/lib/openrouter";
+import { NoObjectGeneratedError } from "ai";
+import { generateStructured, cefrLabel, MODELS } from "@/lib/openrouter";
+import { GeneratedWorksheetSchema } from "@/lib/worksheet-validation";
 import type { LessonObjective } from "@/types/lesson";
-import type { GeneratedWorksheet, WorksheetSectionType } from "@/types/worksheet";
+import type { WorksheetSectionType } from "@/types/worksheet";
 import { v4 as uuid } from "uuid";
 
 const SECTION_TYPES: WorksheetSectionType[] = [
@@ -38,8 +40,8 @@ export async function POST(req: Request) {
 
   const { lessonId, sectionTypes, additionalNotes } = parsed.data;
 
-  const lesson = await db.lesson.findUnique({
-    where: { id: lessonId },
+  const lesson = await db.lesson.findFirst({
+    where: { id: lessonId, unit: { class: { clerkUserId: userId } } },
     include: { unit: { include: { class: true } } },
   });
   if (!lesson) return NextResponse.json({ error: "Lesson not found" }, { status: 404 });
@@ -88,13 +90,25 @@ All content must be CEFR-appropriate for ${cefrLevel} learners.
 
 Return: { "title": "Worksheet title", "sections": [ ...sections ] }`;
 
-  const generated = await chatJSON<GeneratedWorksheet>(
-    [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-    { model: MODELS.STRUCTURED, temperature: 0.6 }
-  );
+  let generated;
+  try {
+    generated = await generateStructured(
+      GeneratedWorksheetSchema,
+      systemPrompt,
+      userPrompt,
+      { model: MODELS.STRUCTURED, temperature: 0.6 }
+    );
+  } catch (err) {
+    if (NoObjectGeneratedError.isInstance(err)) {
+      console.error("Generated worksheet failed validation:", err);
+      return NextResponse.json(
+        { error: "Generated worksheet did not match the expected format. Try again." },
+        { status: 422 }
+      );
+    }
+    console.error("Worksheet generation LLM call failed:", err);
+    return NextResponse.json({ error: "Worksheet generation failed" }, { status: 502 });
+  }
 
   // Ensure every section has an id
   const sections = generated.sections.map((s) => ({ ...s, id: s.id ?? uuid() }));
