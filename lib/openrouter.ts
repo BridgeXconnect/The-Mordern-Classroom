@@ -1,4 +1,7 @@
 import OpenAI from "openai";
+import { generateObject } from "ai";
+import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import type { z } from "zod";
 import type { CefrLevel } from "@prisma/client";
 
 // Lazy client — avoids module-level instantiation failing at build time
@@ -17,13 +20,31 @@ function getClient(): OpenAI {
   return _client;
 }
 
-// Model presets — all LLM model decisions are made here
+// Lazy OpenRouter provider for the Vercel AI SDK (generateObject path).
+let _openrouter: ReturnType<typeof createOpenRouter> | null = null;
+function getOpenRouter() {
+  if (!_openrouter) {
+    _openrouter = createOpenRouter({
+      apiKey: process.env.OPENROUTER_API_KEY ?? "missing",
+      headers: {
+        "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000",
+        "X-Title": "Modern Classroom",
+      },
+    });
+  }
+  return _openrouter;
+}
+
+// Model presets — all LLM model decisions are made here.
+// These stay plain OpenRouter model-id strings: `chat`/`chatJSON` pass them to the
+// OpenAI-compatible client, and `generateStructured` resolves them via the AI SDK
+// provider at call time (`getOpenRouter()(model)`).
 export const MODELS = {
   // Fast, cheap, long context — default for most generation
   DEFAULT: "google/gemini-2.0-flash-001",
   // Best instruction-following for CEFR-controlled output
   CEFR: "anthropic/claude-3-5-haiku",
-  // Reliable JSON mode for structured quiz generation
+  // Reliable structured output for quiz/slides/worksheet generation
   STRUCTURED: "openai/gpt-4o-mini",
 } as const;
 
@@ -82,6 +103,40 @@ export async function chatJSON<T>(
     jsonMode: true,
   });
   return JSON.parse(raw) as T;
+}
+
+export interface StructuredOptions {
+  /** OpenRouter model id (default: MODELS.STRUCTURED). */
+  model?: string;
+  temperature?: number;
+  maxOutputTokens?: number;
+}
+
+/**
+ * Generate a schema-validated object via the Vercel AI SDK's `generateObject`.
+ *
+ * Unlike `chatJSON` (which JSON.parses without validation), this enforces `schema`
+ * at the SDK level — malformed model output throws `NoObjectGeneratedError` instead
+ * of silently persisting. Used by the /api/generate/* routes.
+ */
+export async function generateStructured<T>(
+  schema: z.ZodSchema<T>,
+  systemPrompt: string,
+  userPrompt: string,
+  options: StructuredOptions = {}
+): Promise<T> {
+  const { model = MODELS.STRUCTURED, temperature = 0.6, maxOutputTokens } = options;
+
+  const { object } = await generateObject({
+    model: getOpenRouter()(model),
+    schema,
+    system: systemPrompt,
+    prompt: userPrompt,
+    temperature,
+    ...(maxOutputTokens ? { maxOutputTokens } : {}),
+  });
+
+  return object;
 }
 
 /**

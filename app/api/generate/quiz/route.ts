@@ -2,7 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { chatJSON, MODELS } from "@/lib/openrouter";
+import { NoObjectGeneratedError } from "ai";
+import { generateStructured, MODELS } from "@/lib/openrouter";
 import { buildQuizSystemPrompt, buildQuizUserPrompt } from "@/lib/prompts/quiz";
 import { GeneratedQuizSchema } from "@/lib/quiz-validation";
 import type { GenerateQuizInput } from "@/types/quiz";
@@ -60,34 +61,30 @@ export async function POST(req: Request) {
     vocabulary,
   };
 
-  // ── Generate via LLM (JSON mode) ──────────────────────────────────────────
-  let raw: unknown;
+  // ── Generate via LLM with schema enforcement (generateObject) ─────────────
+  let result;
   try {
-    raw = await chatJSON(
-      [
-        { role: "system", content: buildQuizSystemPrompt(cefrLevel, type) },
-        { role: "user", content: buildQuizUserPrompt(input) },
-      ],
-      { model: MODELS.STRUCTURED, temperature: 0.6, maxTokens: 6000 }
+    result = await generateStructured(
+      GeneratedQuizSchema,
+      buildQuizSystemPrompt(cefrLevel, type),
+      buildQuizUserPrompt(input),
+      { model: MODELS.STRUCTURED, temperature: 0.6, maxOutputTokens: 6000 }
     );
   } catch (err) {
+    if (NoObjectGeneratedError.isInstance(err)) {
+      console.error("Generated quiz failed validation:", err);
+      return NextResponse.json(
+        { error: "Generated quiz did not match the expected format. Try again." },
+        { status: 422 }
+      );
+    }
     console.error("Quiz generation LLM call failed:", err);
     return NextResponse.json({ error: "Quiz generation failed" }, { status: 502 });
   }
 
-  // ── Validate generated questions ──────────────────────────────────────────
-  const result = GeneratedQuizSchema.safeParse(raw);
-  if (!result.success) {
-    console.error("Generated quiz failed validation:", result.error.flatten());
-    return NextResponse.json(
-      { error: "Generated quiz did not match the expected format. Try again.", details: result.error.flatten() },
-      { status: 422 }
-    );
-  }
-
   // Not persisted yet — teacher reviews, then saves via POST /api/quizzes.
   return NextResponse.json(
-    { lessonId, type, cefrLevel, questions: result.data.questions },
+    { lessonId, type, cefrLevel, questions: result.questions },
     { status: 200 }
   );
 }
