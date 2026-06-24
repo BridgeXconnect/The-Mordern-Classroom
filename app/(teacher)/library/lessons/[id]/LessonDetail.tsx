@@ -2,10 +2,74 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Sparkles, ExternalLink, QrCode } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Sparkles, ExternalLink } from "lucide-react";
 import { Chip, CefrBadge, Swatch } from "@/components/ui/ef-primitives";
 
 type Tab = "plan" | "slides" | "worksheet" | "quiz" | "media";
+
+async function postJSON(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const msg = typeof data?.error === "string" ? data.error : `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+/** Primary/ghost button that runs an async generation, shows loading + error, then refreshes. */
+function GenerateButton({
+  label,
+  run,
+  variant = "primary",
+  className = "",
+}: {
+  label: string;
+  run: () => Promise<void>;
+  variant?: "primary" | "ghost";
+  className?: string;
+}) {
+  const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleClick() {
+    setLoading(true);
+    setError(null);
+    try {
+      await run();
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Generation failed. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className={`flex flex-col items-center gap-1.5 ${className}`}>
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={loading}
+        className={`btn btn-${variant} btn-sm`}
+        style={{ opacity: loading ? 0.6 : 1 }}
+      >
+        {loading ? "Generating…" : label}
+      </button>
+      {error && (
+        <p className="text-[11.5px] text-center" style={{ color: "var(--red, #dc2626)" }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
 
 interface Lesson {
   id: string;
@@ -101,10 +165,14 @@ export function LessonDetail({ lesson }: { lesson: Lesson }) {
 
       {/* Tab content */}
       {activeTab === "plan" && <PlanTab lesson={lesson} />}
-      {activeTab === "slides" && <SlidesTab slides={lesson.slides} />}
-      {activeTab === "worksheet" && <WorksheetTab worksheets={lesson.worksheets} />}
-      {activeTab === "quiz" && <QuizTab quizzes={lesson.quizzes} />}
-      {activeTab === "media" && <MediaTab assets={lesson.mediaAssets} />}
+      {activeTab === "slides" && <SlidesTab slides={lesson.slides} lessonId={lesson.id} />}
+      {activeTab === "worksheet" && <WorksheetTab worksheets={lesson.worksheets} lessonId={lesson.id} />}
+      {activeTab === "quiz" && (
+        <QuizTab quizzes={lesson.quizzes} lessonId={lesson.id} cefrLevel={cls.cefrLevel} />
+      )}
+      {activeTab === "media" && (
+        <MediaTab assets={lesson.mediaAssets} lessonId={lesson.id} lessonTitle={lesson.title} />
+      )}
     </div>
   );
 }
@@ -153,7 +221,7 @@ function PlanTab({ lesson }: { lesson: Lesson }) {
   );
 }
 
-function SlidesTab({ slides }: { slides: Lesson["slides"] }) {
+function SlidesTab({ slides, lessonId }: { slides: Lesson["slides"]; lessonId: string }) {
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
@@ -164,7 +232,13 @@ function SlidesTab({ slides }: { slides: Lesson["slides"] }) {
       {slides.length === 0 ? (
         <div className="card flex flex-col items-center py-12 text-center">
           <p style={{ color: "var(--fg-muted)" }}>No slides yet.</p>
-          <Link href="/create" className="btn btn-primary btn-sm mt-3">Generate slides</Link>
+          <GenerateButton
+            label="Generate slides"
+            className="mt-3"
+            run={async () => {
+              await postJSON("/api/generate/slides", { lessonId });
+            }}
+          />
         </div>
       ) : (
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
@@ -187,13 +261,19 @@ function SlidesTab({ slides }: { slides: Lesson["slides"] }) {
   );
 }
 
-function WorksheetTab({ worksheets }: { worksheets: Lesson["worksheets"] }) {
+function WorksheetTab({ worksheets, lessonId }: { worksheets: Lesson["worksheets"]; lessonId: string }) {
   return (
     <div>
       {worksheets.length === 0 ? (
         <div className="card flex flex-col items-center py-12 text-center">
           <p style={{ color: "var(--fg-muted)" }}>No worksheet yet.</p>
-          <Link href="/create" className="btn btn-primary btn-sm mt-3">Generate worksheet</Link>
+          <GenerateButton
+            label="Generate worksheet"
+            className="mt-3"
+            run={async () => {
+              await postJSON("/api/generate/worksheet", { lessonId });
+            }}
+          />
         </div>
       ) : (
         <div className="flex gap-4">
@@ -214,14 +294,40 @@ function WorksheetTab({ worksheets }: { worksheets: Lesson["worksheets"] }) {
   );
 }
 
-function QuizTab({ quizzes }: { quizzes: Lesson["quizzes"] }) {
+function QuizTab({
+  quizzes,
+  lessonId,
+  cefrLevel,
+}: {
+  quizzes: Lesson["quizzes"];
+  lessonId: string;
+  cefrLevel: string;
+}) {
   const quiz = quizzes[0];
   return (
     <div>
       {!quiz ? (
         <div className="card flex flex-col items-center py-12 text-center">
           <p style={{ color: "var(--fg-muted)" }}>No quiz yet.</p>
-          <Link href="/create" className="btn btn-primary btn-sm mt-3">Generate quiz</Link>
+          <GenerateButton
+            label="Generate quiz"
+            className="mt-3"
+            run={async () => {
+              // Generate returns unsaved questions; persist them via POST /api/quizzes.
+              const gen = await postJSON("/api/generate/quiz", {
+                lessonId,
+                type: "POST",
+                questionTypes: ["multiple-choice", "fill-in-blank"],
+                questionCount: 6,
+              });
+              await postJSON("/api/quizzes", {
+                lessonId,
+                type: gen.type ?? "POST",
+                cefrLevel: gen.cefrLevel ?? cefrLevel,
+                questions: gen.questions,
+              });
+            }}
+          />
         </div>
       ) : (
         <div className="grid gap-4" style={{ gridTemplateColumns: "1fr 280px" }}>
@@ -260,16 +366,32 @@ function QuizTab({ quizzes }: { quizzes: Lesson["quizzes"] }) {
   );
 }
 
-function MediaTab({ assets }: { assets: Lesson["mediaAssets"] }) {
+function MediaTab({
+  assets,
+  lessonId,
+  lessonTitle,
+}: {
+  assets: Lesson["mediaAssets"];
+  lessonId: string;
+  lessonTitle: string;
+}) {
+  const generateImage = async () => {
+    await postJSON("/api/generate/image", {
+      lessonId,
+      prompt: `Classroom illustration for an ESL lesson titled "${lessonTitle}"`,
+    });
+  };
+
   return (
     <div>
       <div className="flex items-center gap-3 mb-4">
         <p className="text-[13px]" style={{ color: "var(--fg-muted)" }}>{assets.length} assets</p>
-        <button className="btn btn-ghost btn-sm">Generate media</button>
+        <GenerateButton label="Generate media" variant="ghost" run={generateImage} />
       </div>
       {assets.length === 0 ? (
         <div className="card flex flex-col items-center py-12 text-center">
           <p style={{ color: "var(--fg-muted)" }}>No media yet.</p>
+          <GenerateButton label="Generate media" className="mt-3" run={generateImage} />
         </div>
       ) : (
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))" }}>
