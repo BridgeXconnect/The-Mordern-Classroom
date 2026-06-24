@@ -2,7 +2,7 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Sparkles, ChevronDown, Mic, RotateCcw, Check, BookOpen, LayoutGrid, FileText, ClipboardCheck, Headphones } from "lucide-react";
+import { Sparkles, ChevronDown, Mic, RotateCcw, Eye, Check, BookOpen, LayoutGrid, FileText, ClipboardCheck, Headphones } from "lucide-react";
 import { Swatch, CefrBadge, Segmented } from "@/components/ui/ef-primitives";
 
 type Phase = "idle" | "thinking" | "angles" | "building" | "built";
@@ -60,6 +60,42 @@ async function getJSON(url: string) {
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
   return res.json();
 }
+
+/** The single-asset generation call for a persisted lesson — reused by the initial
+ *  fan-out and by per-asset Refresh (#38). "plan" is the lesson itself, not refreshable. */
+function assetGenerator(key: AssetKey, lessonId: string, lessonTitle: string): () => Promise<unknown> {
+  switch (key) {
+    case "slides":
+      return () => postJSON("/api/generate/slides", { lessonId });
+    case "worksheet":
+      return () => postJSON("/api/generate/worksheet", { lessonId });
+    case "quiz":
+      return async () => {
+        const gen = await postJSON("/api/generate/quiz", {
+          lessonId,
+          type: "POST",
+          questionTypes: ["multiple-choice", "fill-in-blank"],
+          questionCount: 6,
+        });
+        await postJSON("/api/quizzes", {
+          lessonId,
+          type: gen.type,
+          cefrLevel: gen.cefrLevel,
+          questions: gen.questions,
+        });
+      };
+    case "media":
+      return () =>
+        postJSON("/api/generate/image", {
+          lessonId,
+          prompt: `Classroom illustration for an ESL lesson titled "${lessonTitle}"`,
+        });
+    default:
+      return async () => {};
+  }
+}
+
+const FANOUT_ASSETS: AssetKey[] = ["slides", "worksheet", "quiz", "media"];
 
 export function CopilotView({ classes }: { classes: Cls[] }) {
   const router = useRouter();
@@ -161,32 +197,17 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
     }
 
     // Generate the four assets concurrently — independent, partial failure is fine.
-    await Promise.allSettled([
-      runAsset("slides", () => postJSON("/api/generate/slides", { lessonId: createdLessonId })),
-      runAsset("worksheet", () => postJSON("/api/generate/worksheet", { lessonId: createdLessonId })),
-      runAsset("quiz", async () => {
-        const gen = await postJSON("/api/generate/quiz", {
-          lessonId: createdLessonId,
-          type: "POST",
-          questionTypes: ["multiple-choice", "fill-in-blank"],
-          questionCount: 6,
-        });
-        await postJSON("/api/quizzes", {
-          lessonId: createdLessonId,
-          type: gen.type,
-          cefrLevel: gen.cefrLevel,
-          questions: gen.questions,
-        });
-      }),
-      runAsset("media", () =>
-        postJSON("/api/generate/image", {
-          lessonId: createdLessonId,
-          prompt: `Classroom illustration for an ESL lesson titled "${angle.title}"`,
-        })
-      ),
-    ]);
+    await Promise.allSettled(
+      FANOUT_ASSETS.map((key) => runAsset(key, assetGenerator(key, createdLessonId, angle.title)))
+    );
 
     setPhase("built");
+  }
+
+  /** #38: regenerate a single asset in place. */
+  async function handleRefresh(key: AssetKey) {
+    if (!lessonId || chosenAngle === null) return;
+    await runAsset(key, assetGenerator(key, lessonId, angles[chosenAngle].title));
   }
 
   function handleReset() {
@@ -496,6 +517,29 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
                       <span className="text-[13.5px] font-medium" style={{ color: "var(--fg)" }}>{label}</span>
                       <AssetStatusChip status={status} />
                     </div>
+
+                    {/* #38: Preview / Refresh — only for persisted, non-plan assets. */}
+                    {key !== "plan" && (status === "ready" || status === "error") && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {status === "ready" && (
+                          <button
+                            type="button"
+                            onClick={handleOpenLesson}
+                            className="btn btn-ghost btn-sm flex items-center gap-1"
+                          >
+                            <Eye className="h-3.5 w-3.5" /> Preview
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRefresh(key)}
+                          className="btn btn-ghost btn-sm flex items-center gap-1"
+                          title="Regenerate"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 );
               })}
