@@ -1,9 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { chatJSON, MODELS } from "@/lib/openrouter";
+import { NoObjectGeneratedError } from "ai";
+import { generateStructured, MODELS } from "@/lib/openrouter";
+import { GeneratedLessonPlanSchema } from "@/lib/lesson-validation";
 import { buildLessonPlanSystemPrompt, buildLessonPlanUserPrompt } from "@/lib/prompts/lessonPlan";
-import type { GenerateLessonPlanInput, GeneratedLessonPlan } from "@/types/lesson";
+import type { GenerateLessonPlanInput } from "@/types/lesson";
 
 const GenerateSchema = z.object({
   title: z.string().min(1).max(200),
@@ -28,13 +30,25 @@ export async function POST(req: Request) {
 
   const input = parsed.data as GenerateLessonPlanInput;
 
-  const plan = await chatJSON<GeneratedLessonPlan>(
-    [
-      { role: "system", content: buildLessonPlanSystemPrompt(input.cefrLevel, input.atlSkills, input.ibTheme) },
-      { role: "user", content: buildLessonPlanUserPrompt(input) },
-    ],
-    { model: MODELS.CEFR, temperature: 0.6, maxTokens: 4096 }
-  );
+  let plan;
+  try {
+    plan = await generateStructured(
+      GeneratedLessonPlanSchema,
+      buildLessonPlanSystemPrompt(input.cefrLevel, input.atlSkills, input.ibTheme),
+      buildLessonPlanUserPrompt(input),
+      { model: MODELS.CEFR, temperature: 0.6, maxOutputTokens: 4096 }
+    );
+  } catch (err) {
+    if (NoObjectGeneratedError.isInstance(err)) {
+      console.error("Generated lesson plan failed validation:", err);
+      return NextResponse.json(
+        { error: "Generated lesson plan did not match the expected format. Try again." },
+        { status: 422 }
+      );
+    }
+    console.error("Lesson plan generation LLM call failed:", err);
+    return NextResponse.json({ error: "Lesson plan generation failed" }, { status: 502 });
+  }
 
   return NextResponse.json(plan);
 }

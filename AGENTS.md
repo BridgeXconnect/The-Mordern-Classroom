@@ -23,10 +23,14 @@ pnpm db:studio    # Open Prisma Studio UI
 - **Styling:** Tailwind CSS + shadcn/ui (components in `components/ui/`)
 - **Auth:** Clerk (`@clerk/nextjs`) — teacher only. Students use share links.
 - **Database:** Neon PostgreSQL + Prisma ORM
-- **LLM:** OpenRouter API via `@openrouter/sdk`
+- **LLM:** OpenRouter, accessed two ways from `lib/openrouter.ts`:
+  - `chat`/`chatJSON` — OpenAI-compatible client (free-form text + loose JSON).
+  - `generateStructured(schema, system, user)` — Vercel AI SDK `generateObject` with the
+    OpenRouter provider (`@openrouter/ai-sdk-provider`). Schema-validates output before it
+    is persisted; used by all `/api/generate/*` routes.
   - Default model: `google/gemini-2.0-flash-001` (fast, cheap)
   - CEFR-controlled content: `anthropic/claude-3.5-haiku` (best instruction following)
-  - Structured JSON output (quizzes): `openai/gpt-4o-mini` (reliable JSON mode)
+  - Structured output (quiz/slides/worksheet/lesson): `openai/gpt-4o-mini` / per-route model
 - **File Storage:** Cloudflare R2 via `@aws-sdk/client-s3` (S3-compatible)
 - **Image Generation:** Pollinations.ai (no key) + HF FLUX.1-schnell (free tier)
 - **Infographics:** `puppeteer-core` + `@sparticuz/chromium` (Vercel-compatible)
@@ -65,7 +69,11 @@ components/
   media/                # Image generator, infographic builder, video search
 
 lib/
-  openrouter.ts         # ALL LLM calls go through here — never call OpenRouter directly
+  openrouter.ts         # ALL LLM calls go through here — chat/chatJSON + generateStructured (AI SDK)
+  quiz-validation.ts    # Zod schemas for generated quizzes
+  slide-validation.ts   # Zod schemas for generated slide decks
+  worksheet-validation.ts # Zod schemas for generated worksheets
+  lesson-validation.ts  # Zod schemas for generated lesson plans
   r2.ts                 # ALL file storage goes through here — never use fs for user media
   tts.ts                # Google Cloud TTS wrapper
   puppeteer.ts          # Infographic renderer (sparticuz/chromium)
@@ -84,7 +92,7 @@ remotion/               # Video template components
 ```
 
 ## Critical Conventions
-1. **All LLM calls** → `lib/openrouter.ts`. Never import `@openrouter/sdk` directly in routes/components.
+1. **All LLM calls** → `lib/openrouter.ts`. Never call OpenRouter (the AI SDK provider or the OpenAI client) directly in routes/components. For structured output, use `generateStructured(schema, …)` — it runs `generateObject` and schema-validates before returning, so generated content can't be persisted malformed.
 2. **All file storage** → `lib/r2.ts`. Never use `fs` for user-generated media.
 3. **CEFR level** must be passed to every generation function (`cefrLevel: CefrLevel`).
 4. **IB context** is injected via `lib/prompts/ibContext.ts` into every lesson/worksheet/quiz prompt.
@@ -139,3 +147,10 @@ for the target CEFR level from `lib/prompts/ibContext.ts`.
 - Remotion renders are CPU-intensive — consider Remotion Lambda for production video generation.
 - YouTube Data API v3: 10,000 units/day free. Cache search results in DB to preserve quota.
 - pnpm is the package manager. Never use npm or yarn in this project.
+- LLM generation goes through the Vercel AI SDK (`ai` v6) `generateObject`, with OpenRouter as
+  the underlying provider (`@openrouter/ai-sdk-provider`). Call it via `generateStructured()` in
+  `lib/openrouter.ts` — pass a Zod schema and it validates the model output before returning
+  (throws `NoObjectGeneratedError`, which the /api/generate/* routes map to a 422). `MODELS.*`
+  remain plain OpenRouter model-id strings (shared with the legacy `chat`/`chatJSON` path);
+  the provider is applied per-call inside `generateStructured`. The old `@openrouter/sdk`
+  dependency was unused and has been removed.
