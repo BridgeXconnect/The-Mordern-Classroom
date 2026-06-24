@@ -1,13 +1,26 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Sparkles, ChevronDown, Mic, RotateCcw, Eye, Check, BookOpen, LayoutGrid, FileText, ClipboardCheck, Headphones } from "lucide-react";
 import { Swatch, CefrBadge, Segmented } from "@/components/ui/ef-primitives";
-import { toast } from "sonner";
 
 type Phase = "idle" | "thinking" | "angles" | "building" | "built";
 
 interface Cls { id: string; name: string; cefrLevel: string; }
+
+interface Angle {
+  title: string;
+  blurb: string;
+  skills: string[];
+  fit: string;
+  ibTheme: string;
+  ibTextTypes: string[];
+  atlSkills: string[];
+}
+
+type AssetKey = "plan" | "slides" | "worksheet" | "quiz" | "media";
+type AssetStatus = "pending" | "loading" | "ready" | "error";
 
 const QUICK_PROMPTS = [
   "A reading lesson on climate change for B1",
@@ -16,82 +29,203 @@ const QUICK_PROMPTS = [
   "Vocabulary: travel idioms + gap-fill worksheet",
 ];
 
-const ANGLE_PROPOSALS = [
-  {
-    title: "Inquiry-based discussion",
-    blurb: "Students analyse real news articles, then debate the passive construction in English vs. their L1.",
-    skills: ["Critical thinking", "Communication"],
-    fit: "Strong fit for IB ATL skills",
-  },
-  {
-    title: "Guided practice → production",
-    blurb: "Structured grammar input with controlled practice, leading to a short newspaper-style writing task.",
-    skills: ["Self-management", "Research"],
-    fit: "Aligns with CEFR B2 writing descriptors",
-  },
-  {
-    title: "Media-driven vocabulary build",
-    blurb: "Short BBC news clips with gap-fill listening, then students re-tell the story using passive structures.",
-    skills: ["Communication", "Thinking"],
-    fit: "Ideal for mixed listening + grammar goals",
-  },
+const KIT_ASSETS: { key: AssetKey; icon: typeof BookOpen; label: string }[] = [
+  { key: "plan",      icon: BookOpen,       label: "Lesson plan" },
+  { key: "slides",    icon: LayoutGrid,     label: "Slides" },
+  { key: "worksheet", icon: FileText,       label: "Worksheet" },
+  { key: "quiz",      icon: ClipboardCheck, label: "Quiz" },
+  { key: "media",     icon: Headphones,     label: "Media" },
 ];
 
-const KIT_ASSETS = [
-  { key: "plan",      icon: BookOpen,        label: "Lesson plan",  lines: ["5 stages · 45 min", "IB ATL: Thinking, Communication", "CEFR B2 aligned"] },
-  { key: "slides",    icon: LayoutGrid,      label: "Slides",       lines: ["14 slides", "Warm-up → Input → Practice → Production", "Includes media placeholders"] },
-  { key: "worksheet", icon: FileText,        label: "Worksheet",    lines: ["Gap-fill · Reading · Writing", "3 sections · export PDF", "Differentiated tasks"] },
-  { key: "quiz",      icon: ClipboardCheck,  label: "Quiz",         lines: ["8 questions · mixed types", "MC + fill-in + word order", "Share link ready"] },
-  { key: "media",     icon: Headphones,      label: "Media",        lines: ["BBC clip shortlisted", "2 infographics", "TTS audio generated"] },
-];
+const INITIAL_ASSETS: Record<AssetKey, AssetStatus> = {
+  plan: "pending", slides: "pending", worksheet: "pending", quiz: "pending", media: "pending",
+};
+
+async function postJSON(url: string, body: unknown) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    const msg = typeof data?.error === "string" ? data.error : `Request failed (${res.status})`;
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function getJSON(url: string) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Request failed (${res.status})`);
+  return res.json();
+}
+
+/** The single-asset generation call for a persisted lesson — reused by the initial
+ *  fan-out and by per-asset Refresh (#38). "plan" is the lesson itself, not refreshable. */
+function assetGenerator(key: AssetKey, lessonId: string, lessonTitle: string): () => Promise<unknown> {
+  switch (key) {
+    case "slides":
+      return () => postJSON("/api/generate/slides", { lessonId });
+    case "worksheet":
+      return () => postJSON("/api/generate/worksheet", { lessonId });
+    case "quiz":
+      return async () => {
+        const gen = await postJSON("/api/generate/quiz", {
+          lessonId,
+          type: "POST",
+          questionTypes: ["multiple-choice", "fill-in-blank"],
+          questionCount: 6,
+        });
+        await postJSON("/api/quizzes", {
+          lessonId,
+          type: gen.type,
+          cefrLevel: gen.cefrLevel,
+          questions: gen.questions,
+        });
+      };
+    case "media":
+      return () =>
+        postJSON("/api/generate/image", {
+          lessonId,
+          prompt: `Classroom illustration for an ESL lesson titled "${lessonTitle}"`,
+        });
+    default:
+      return async () => {};
+  }
+}
+
+const FANOUT_ASSETS: AssetKey[] = ["slides", "worksheet", "quiz", "media"];
 
 export function CopilotView({ classes }: { classes: Cls[] }) {
+  const router = useRouter();
   const [text, setText] = useState("");
   const [selectedClass, setSelectedClass] = useState<Cls | null>(classes[0] ?? null);
   const [duration, setDuration] = useState<"45" | "60" | "75">("45");
   const [phase, setPhase] = useState<Phase>("idle");
+  const [angles, setAngles] = useState<Angle[]>([]);
   const [chosenAngle, setChosenAngle] = useState<number | null>(null);
-  const [readyCount, setReadyCount] = useState(0);
+  const [assetState, setAssetState] = useState<Record<AssetKey, AssetStatus>>(INITIAL_ASSETS);
+  const [lessonId, setLessonId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [showClassPicker, setShowClassPicker] = useState(false);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [phase, readyCount]);
+  }, [phase, assetState]);
 
-  function handleGenerate() {
-    if (!text.trim()) return;
+  async function handleGenerate() {
+    if (!text.trim() || !selectedClass) return;
     setPhase("thinking");
-    setTimeout(() => setPhase("angles"), 1100);
+    setError(null);
+    try {
+      const { angles: proposed } = await postJSON("/api/generate/angles", {
+        prompt: text,
+        classId: selectedClass.id,
+        duration: Number(duration),
+      });
+      setAngles(proposed);
+      setPhase("angles");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not propose directions. Try again.");
+      setPhase("idle");
+    }
   }
 
-  function handleChooseAngle(i: number) {
+  /** Reuse the per-class "Copilot drafts" unit, creating it on first use. */
+  async function resolveCopilotUnit(classId: string, angle: Angle): Promise<string> {
+    const units: { id: string; title: string }[] = await getJSON(`/api/units?classId=${classId}`);
+    const existing = units.find((u) => u.title === "Copilot drafts");
+    if (existing) return existing.id;
+    const created = await postJSON("/api/units", {
+      classId,
+      title: "Copilot drafts",
+      ibTheme: angle.ibTheme,
+      ibTextTypes: angle.ibTextTypes,
+      atlSkills: angle.atlSkills,
+    });
+    return created.id;
+  }
+
+  async function runAsset(key: AssetKey, fn: () => Promise<unknown>) {
+    setAssetState((s) => ({ ...s, [key]: "loading" }));
+    try {
+      await fn();
+      setAssetState((s) => ({ ...s, [key]: "ready" }));
+    } catch {
+      setAssetState((s) => ({ ...s, [key]: "error" }));
+    }
+  }
+
+  async function handleChooseAngle(i: number) {
+    if (!selectedClass || chosenAngle !== null) return;
+    const angle = angles[i];
     setChosenAngle(i);
-    setTimeout(() => {
-      setPhase("building");
-      let count = 0;
-      const interval = setInterval(() => {
-        count++;
-        setReadyCount(count);
-        if (count >= KIT_ASSETS.length) {
-          clearInterval(interval);
-          setTimeout(() => setPhase("built"), 300);
-        }
-      }, 650);
-    }, 400);
+    setError(null);
+    setAssetState({ ...INITIAL_ASSETS, plan: "loading" });
+    setPhase("building");
+
+    let createdLessonId: string;
+    try {
+      const unitId = await resolveCopilotUnit(selectedClass.id, angle);
+      const plan = await postJSON("/api/generate/lesson", {
+        title: angle.title,
+        unitId,
+        cefrLevel: selectedClass.cefrLevel,
+        duration: Number(duration),
+        ibTheme: angle.ibTheme,
+        ibTextTypes: angle.ibTextTypes,
+        atlSkills: angle.atlSkills,
+        additionalNotes: `${text}\n\nApproach: ${angle.blurb}`,
+      });
+      const lesson = await postJSON("/api/lessons", {
+        unitId,
+        title: plan.title,
+        objectives: plan.objectives,
+        duration: Number(duration),
+        ibAlignment: plan.ibAlignment,
+      });
+      createdLessonId = lesson.id;
+      setLessonId(lesson.id);
+      setAssetState((s) => ({ ...s, plan: "ready" }));
+    } catch (e) {
+      setAssetState((s) => ({ ...s, plan: "error" }));
+      setError(e instanceof Error ? e.message : "Could not create the lesson. Start over and try again.");
+      return; // no lesson → can't generate assets
+    }
+
+    // Generate the four assets concurrently — independent, partial failure is fine.
+    await Promise.allSettled(
+      FANOUT_ASSETS.map((key) => runAsset(key, assetGenerator(key, createdLessonId, angle.title)))
+    );
+
+    setPhase("built");
+  }
+
+  /** #38: regenerate a single asset in place. */
+  async function handleRefresh(key: AssetKey) {
+    if (!lessonId || chosenAngle === null) return;
+    await runAsset(key, assetGenerator(key, lessonId, angles[chosenAngle].title));
   }
 
   function handleReset() {
     setPhase("idle");
     setText("");
+    setAngles([]);
     setChosenAngle(null);
-    setReadyCount(0);
+    setAssetState(INITIAL_ASSETS);
+    setLessonId(null);
+    setError(null);
   }
 
-  function handleSave() {
-    toast("Saved to Library");
+  function handleOpenLesson() {
+    if (lessonId) router.push(`/library/lessons/${lessonId}`);
   }
+
+  const readyCount = KIT_ASSETS.filter(({ key }) => assetState[key] === "ready").length;
+  const planFailed = assetState.plan === "error";
 
   return (
     <div className="max-w-[820px] mx-auto">
@@ -189,13 +323,17 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
                 type="button"
                 onClick={handleGenerate}
                 className="btn btn-primary ml-auto"
-                disabled={!text.trim()}
-                style={{ opacity: text.trim() ? 1 : 0.5 }}
+                disabled={!text.trim() || !selectedClass}
+                style={{ opacity: text.trim() && selectedClass ? 1 : 0.5 }}
               >
                 Generate
               </button>
             </div>
           </div>
+
+          {error && (
+            <p className="text-[12.5px] mt-3" style={{ color: "var(--red, #dc2626)" }}>{error}</p>
+          )}
 
           {/* Quick prompts */}
           <div className="flex flex-wrap justify-center gap-2 mt-5">
@@ -285,7 +423,7 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
           )}
 
           {/* Angle proposals */}
-          {(phase === "angles" || phase === "building" || phase === "built") && (
+          {(phase === "angles" || phase === "building" || phase === "built") && angles.length > 0 && (
             <div className="animate-fade-up">
               <p className="text-[13px] mb-3" style={{ color: "var(--fg-muted)" }}>
                 Here are three directions for this lesson. Choose one to continue.
@@ -294,7 +432,7 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
                 className="grid gap-3"
                 style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}
               >
-                {ANGLE_PROPOSALS.map((angle, i) => {
+                {angles.map((angle, i) => {
                   const chosen = chosenAngle === i;
                   const dimmed = chosenAngle !== null && !chosen;
                   return (
@@ -344,14 +482,15 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
           {(phase === "building" || phase === "built") && (
             <div className="animate-fade-up space-y-2.5">
               <p className="text-[13px]" style={{ color: "var(--fg-muted)" }}>
-                Building your lesson kit…
+                {phase === "built" ? "Your lesson kit" : "Building your lesson kit…"}
               </p>
-              {KIT_ASSETS.map(({ key, icon: Icon, label, lines }, i) => {
-                const ready = i < readyCount;
+              {KIT_ASSETS.map(({ key, icon: Icon, label }, i) => {
+                const status = assetState[key];
+                const ready = status === "ready";
                 return (
                   <div
                     key={key}
-                    className="card flex items-start gap-4 p-4 transition-all animate-fade-up"
+                    className="card flex items-center gap-4 p-4 transition-all animate-fade-up"
                     style={{ animationDelay: `${i * 0.08}s` }}
                   >
                     {/* Icon tile */}
@@ -368,43 +507,35 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
                       />
                     </div>
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1.5">
-                        <span
-                          className="font-mono text-[10.5px] uppercase tracking-[0.1em]"
-                          style={{ color: "var(--fg-subtle)" }}
-                        >
-                          {String(i + 1).padStart(2, "0")}
-                        </span>
-                        <span className="text-[13.5px] font-medium" style={{ color: "var(--fg)" }}>{label}</span>
-                        {ready ? (
-                          <span className="chip chip-green">Ready</span>
-                        ) : (
-                          <span className="skeleton h-4 w-16" />
-                        )}
-                      </div>
-                      {ready ? (
-                        <div className="space-y-0.5">
-                          {lines.map((l) => (
-                            <p key={l} className="text-[12.5px]" style={{ color: "var(--fg-muted)" }}>
-                              {l}
-                            </p>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="space-y-1">
-                          <div className="skeleton h-3 w-3/4" />
-                          <div className="skeleton h-3 w-1/2" />
-                        </div>
-                      )}
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
+                      <span
+                        className="font-mono text-[10.5px] uppercase tracking-[0.1em]"
+                        style={{ color: "var(--fg-subtle)" }}
+                      >
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="text-[13.5px] font-medium" style={{ color: "var(--fg)" }}>{label}</span>
+                      <AssetStatusChip status={status} />
                     </div>
 
-                    {ready && (
+                    {/* #38: Preview / Refresh — only for persisted, non-plan assets. */}
+                    {key !== "plan" && (status === "ready" || status === "error") && (
                       <div className="flex items-center gap-1.5 shrink-0">
-                        <button className="btn btn-ghost btn-sm flex items-center gap-1">
-                          <Eye className="h-3.5 w-3.5" /> Preview
-                        </button>
-                        <button className="btn btn-ghost btn-sm flex items-center gap-1">
+                        {status === "ready" && (
+                          <button
+                            type="button"
+                            onClick={handleOpenLesson}
+                            className="btn btn-ghost btn-sm flex items-center gap-1"
+                          >
+                            <Eye className="h-3.5 w-3.5" /> Preview
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleRefresh(key)}
+                          className="btn btn-ghost btn-sm flex items-center gap-1"
+                          title="Regenerate"
+                        >
                           <RotateCcw className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -415,8 +546,19 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
             </div>
           )}
 
+          {/* Plan failure */}
+          {planFailed && error && (
+            <div
+              className="card flex items-center justify-between gap-4 px-5 py-4"
+              style={{ border: "1.5px solid var(--red, #dc2626)", background: "var(--red-bg, rgba(220,38,38,0.08))" }}
+            >
+              <p className="text-[13px]" style={{ color: "var(--fg)" }}>{error}</p>
+              <button onClick={handleReset} className="btn btn-ghost btn-sm">Start over</button>
+            </div>
+          )}
+
           {/* Completion bar */}
-          {phase === "built" && (
+          {phase === "built" && !planFailed && (
             <div
               className="card flex items-center justify-between gap-4 px-5 py-4 animate-pop-in"
               style={{ border: "1.5px solid var(--green-bg)", background: "var(--green-bg)" }}
@@ -429,13 +571,13 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
                   <Check className="h-4 w-4" style={{ color: "#fff" }} />
                 </span>
                 <p className="text-[13.5px] font-medium" style={{ color: "var(--fg)" }}>
-                  Lesson kit complete · 5 assets
+                  Lesson kit saved · {readyCount} of {KIT_ASSETS.length} assets ready
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <button className="btn btn-ghost btn-sm">Edit in Library</button>
-                <button onClick={handleSave} className="btn btn-primary btn-sm">
-                  Accept &amp; save
+                <button onClick={handleOpenLesson} className="btn btn-ghost btn-sm">Edit in Library</button>
+                <button onClick={handleOpenLesson} className="btn btn-primary btn-sm">
+                  Open lesson
                 </button>
               </div>
             </div>
@@ -452,4 +594,11 @@ export function CopilotView({ classes }: { classes: Cls[] }) {
       `}</style>
     </div>
   );
+}
+
+function AssetStatusChip({ status }: { status: AssetStatus }) {
+  if (status === "ready") return <span className="chip chip-green">Ready</span>;
+  if (status === "error") return <span className="chip" style={{ color: "var(--red, #dc2626)" }}>Failed</span>;
+  if (status === "loading") return <span className="chip">Generating…</span>;
+  return <span className="skeleton h-4 w-16" />;
 }
