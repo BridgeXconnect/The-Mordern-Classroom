@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { NoObjectGeneratedError } from "ai";
@@ -130,5 +131,6 @@ Return: { "title": "Worksheet title", "sections": [ ...sections ] }`;
         },
       });
 
+  revalidatePath("/library");
   return NextResponse.json(worksheet, { status: 201 });
 }

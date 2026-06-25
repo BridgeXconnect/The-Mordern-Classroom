@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { NoObjectGeneratedError } from "ai";
@@ -13,6 +14,7 @@ const GenerateSlidesSchema = z.object({
   includeVocabulary: z.boolean().default(true),
   includeGrammar: z.boolean().default(false),
   includeActivity: z.boolean().default(true),
+  additionalNotes: z.string().max(1000).optional(),
 });
 
 export async function POST(req: Request) {
@@ -25,7 +27,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { lessonId, slideCount, includeVocabulary, includeGrammar, includeActivity } = parsed.data;
+  const { lessonId, slideCount, includeVocabulary, includeGrammar, includeActivity, additionalNotes } = parsed.data;
 
   // Fetch lesson context
   const lesson = await db.lesson.findFirst({
@@ -51,7 +53,7 @@ Return ONLY valid JSON matching the schema exactly.`;
   const userPrompt = `Create a ${slideCount}-slide presentation for:
 Lesson: "${lesson.title}"
 Unit: "${lesson.unit.title}"
-Duration: ${lesson.duration} minutes
+Duration: ${lesson.duration} minutes${additionalNotes ? `\n\nSpecific guidance: ${additionalNotes}` : ""}
 
 Learning objectives:
 ${objectives.map((o) => `- ${o.skill}: ${o.description}`).join("\n")}
@@ -120,5 +122,6 @@ Return: { "slides": [ ...slide objects ] }`;
     )
   );
 
+  revalidatePath("/library");
   return NextResponse.json(saved, { status: 201 });
 }
