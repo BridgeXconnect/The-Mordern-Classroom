@@ -1,3 +1,7 @@
+# BMAD Method
+_bmad/custom/config.user.toml
+_bmad/_config/config.user.toml
+
 # Dependencies
 /node_modules
 /.pnp
