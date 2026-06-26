@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Sparkles, ExternalLink } from "lucide-react";
 import { Chip, CefrBadge, Swatch } from "@/components/ui/ef-primitives";
+import { InlineEditField } from "@/components/ui/InlineEditField";
+import type { LessonPlanBody, IbAlignment, LessonObjective } from "@/types/lesson";
 
 type Tab = "plan" | "slides" | "worksheet" | "quiz" | "media";
 
@@ -18,6 +20,24 @@ async function postJSON(url: string, body: unknown) {
     const data = await res.json().catch(() => null);
     const msg = typeof data?.error === "string" ? data.error : `Request failed (${res.status})`;
     throw new Error(msg);
+  }
+  return res.json();
+}
+
+async function putJSON(url: string, body: unknown) {
+  const res = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(typeof data?.error === "string" ? data.error : `Request failed (${res.status})`);
+  }
+  return res.json();
+}
+
+async function patchJSON(url: string, body: unknown) {
+  const res = await fetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(typeof data?.error === "string" ? data.error : `Request failed (${res.status})`);
   }
   return res.json();
 }
@@ -77,6 +97,7 @@ interface Lesson {
   objectives: unknown;
   duration: number;
   ibAlignment: unknown;
+  plan: unknown;
   unit: { title: string; class: { name: string; cefrLevel: string; color?: string | null } };
   slides: { id: string; order: number; type: string; content: unknown }[];
   worksheets: { id: string }[];
@@ -86,6 +107,7 @@ interface Lesson {
 
 export function LessonDetail({ lesson }: { lesson: Lesson }) {
   const [activeTab, setActiveTab] = useState<Tab>("plan");
+  const router = useRouter();
   const cls = lesson.unit.class;
 
   const tabs: { key: Tab; label: string; count?: number }[] = [
@@ -115,18 +137,22 @@ export function LessonDetail({ lesson }: { lesson: Lesson }) {
           <CefrBadge level={cls.cefrLevel} />
           <Chip label="Draft" variant="amber" />
         </div>
-        <h1
-          className="font-serif text-[28px] mb-2"
-          style={{ color: "var(--fg)", fontWeight: 420, letterSpacing: "-0.015em" }}
-        >
-          {lesson.title}
-        </h1>
+        <InlineEditField
+          value={lesson.title}
+          displayAs="h1"
+          displayClassName="font-serif text-[28px] mb-2"
+          inputClassName="font-serif text-[28px] mb-2"
+          onSave={async (v) => {
+            await putJSON(`/api/lessons/${lesson.id}`, { title: v });
+            router.refresh();
+          }}
+        />
         <div className="flex items-center gap-3 flex-wrap">
           <span className="chip">{lesson.duration} min</span>
           <span className="chip">{lesson.unit.title}</span>
         </div>
         <div className="flex items-center gap-2 mt-4">
-          <Link href="/create" className="btn btn-ghost btn-sm flex items-center gap-1.5">
+          <Link href={`/create?lessonId=${lesson.id}`} className="btn btn-ghost btn-sm flex items-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5" /> Ask copilot
           </Link>
           <button className="btn btn-primary btn-sm">Present</button>
@@ -178,44 +204,164 @@ export function LessonDetail({ lesson }: { lesson: Lesson }) {
 }
 
 function PlanTab({ lesson }: { lesson: Lesson }) {
-  const stages = [
-    { label: "Warm-up",    duration: "10 min", teacher: "Elicit prior knowledge.", student: "Share experiences." },
-    { label: "Input",      duration: "15 min", teacher: "Present the language point.", student: "Take notes." },
-    { label: "Practice",   duration: "10 min", teacher: "Monitor gap-fill activity.", student: "Complete exercises." },
-    { label: "Production", duration: "8 min",  teacher: "Facilitate pair discussion.", student: "Role-play conversation." },
-    { label: "Feedback",   duration: "2 min",  teacher: "Correct errors, summarise.", student: "Self-evaluate." },
-  ];
+  const router = useRouter();
+  const plan = lesson.plan as LessonPlanBody | null;
+  const ib = lesson.ibAlignment as IbAlignment | null;
+  const objectives = (lesson.objectives as LessonObjective[] | null) ?? [];
+
+  if (!plan || !plan.activities?.length) {
+    return (
+      <div className="card p-6 text-center">
+        <p style={{ color: "var(--fg-muted)" }}>This lesson doesn’t have a detailed plan yet.</p>
+        {objectives.length > 0 && (
+          <ul className="mt-3 inline-block text-left space-y-1">
+            {objectives.map((o, i) => (
+              <li key={i} className="text-[13px]" style={{ color: "var(--fg-muted)" }}>
+                • <span className="capitalize">{o.skill}</span>: {o.description}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    );
+  }
+
+  const targets = plan.targets;
+  const hasTargets = !!(targets?.vocabulary?.length || targets?.grammar?.length || targets?.skills?.length);
 
   return (
-    <div className="grid gap-6" style={{ gridTemplateColumns: "1fr 280px" }}>
-      <div className="space-y-3">
-        {stages.map((s) => (
-          <div key={s.label} className="card p-4">
-            <div className="flex items-center gap-3 mb-3">
-              <h3 className="font-medium text-[14px]" style={{ color: "var(--fg)" }}>{s.label}</h3>
-              <span className="font-mono text-[10.5px]" style={{ color: "var(--fg-subtle)" }}>{s.duration}</span>
+    <div className="grid gap-6" style={{ gridTemplateColumns: "1fr 300px" }}>
+      {/* Main column — scripted activities */}
+      <div className="space-y-4">
+        {plan.summary !== undefined && (
+          <InlineEditField
+            value={plan.summary ?? ""}
+            multiline
+            displayAs="p"
+            displayClassName="text-[13.5px] leading-relaxed"
+            inputClassName="text-[13.5px] leading-relaxed"
+            onSave={async (v) => {
+              await patchJSON(`/api/lessons/${lesson.id}/plan`, { summary: v });
+              router.refresh();
+            }}
+          />
+        )}
+
+        {plan.activities.map((a, i) => (
+          <div key={i} className="card p-4">
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
+              <span className="chip">{a.section}</span>
+              <h3 className="font-medium text-[14px]" style={{ color: "var(--fg)" }}>{a.title}</h3>
+              <span className="font-mono text-[10.5px] ml-auto" style={{ color: "var(--fg-subtle)" }}>{a.durationMin} min</span>
             </div>
-            <div className="grid gap-2 text-[13px]" style={{ gridTemplateColumns: "1fr 1fr" }}>
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1" style={{ color: "var(--fg-faint)" }}>Teacher</p>
-                <p style={{ color: "var(--fg-muted)" }}>{s.teacher}</p>
+
+            {a.objectives?.length > 0 && (
+              <div className="mb-2.5 space-y-0.5">
+                {a.objectives.map((o, oi) => (
+                  <p key={oi} className="text-[12px] flex gap-1.5">
+                    <span style={{ color: "var(--green)" }}>✓</span>
+                    <span style={{ color: "var(--fg-muted)" }}>{o}</span>
+                  </p>
+                ))}
               </div>
-              <div>
-                <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1" style={{ color: "var(--fg-faint)" }}>Students</p>
-                <p style={{ color: "var(--fg-muted)" }}>{s.student}</p>
+            )}
+
+            {a.materials?.length > 0 && (
+              <p className="text-[12px] mb-2" style={{ color: "var(--fg-subtle)" }}>
+                <span className="font-mono uppercase tracking-[0.08em] text-[10px]">Materials: </span>
+                {a.materials.join(", ")}
+              </p>
+            )}
+
+            {a.contextSetup && (
+              <div className="mb-2.5">
+                <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1" style={{ color: "var(--fg-faint)" }}>Set-up</p>
+                <p className="text-[13px] leading-relaxed" style={{ color: "var(--fg-muted)" }}>{a.contextSetup}</p>
               </div>
+            )}
+
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1.5" style={{ color: "var(--fg-faint)" }}>Instructions</p>
+              <ol className="space-y-1.5">
+                {a.steps.map((step, si) => (
+                  <li key={si} className="text-[13px] leading-relaxed flex gap-2">
+                    <span className="font-mono text-[11px] shrink-0" style={{ color: "var(--fg-faint)" }}>{si + 1}.</span>
+                    <span style={{ color: "var(--fg-muted)" }}>{step}</span>
+                  </li>
+                ))}
+              </ol>
             </div>
+
+            {a.teachingTips?.length > 0 && (
+              <div className="mt-2.5 rounded-[8px] p-2.5" style={{ background: "var(--surface-2)" }}>
+                <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1" style={{ color: "var(--fg-faint)" }}>Teaching tips</p>
+                <div className="space-y-0.5">
+                  {a.teachingTips.map((t, ti) => (
+                    <p key={ti} className="text-[12.5px]" style={{ color: "var(--fg-muted)" }}>• {t}</p>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {a.extension && (
+              <div className="mt-2">
+                <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1" style={{ color: "var(--fg-faint)" }}>Extension</p>
+                <p className="text-[12.5px]" style={{ color: "var(--fg-muted)" }}>{a.extension}</p>
+              </div>
+            )}
           </div>
         ))}
       </div>
-      <div className="card p-4 self-start space-y-3">
-        <p className="section-label">IB Alignment</p>
-        {["ATL: Thinking skills", "ATL: Communication", "Global context: Identities"].map((a) => (
-          <div key={a} className="flex items-center gap-2 text-[12.5px]" style={{ color: "var(--fg-muted)" }}>
-            <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "var(--green)" }} />
-            {a}
+
+      {/* Sidebar — targets, materials, IB */}
+      <div className="space-y-4 self-start">
+        {hasTargets && (
+          <div className="card p-4 space-y-3">
+            <p className="section-label">Targets</p>
+            {([["Vocabulary", targets.vocabulary], ["Grammar", targets.grammar], ["Skills", targets.skills]] as const).map(
+              ([label, items]) =>
+                items?.length ? (
+                  <div key={label}>
+                    <p className="font-mono text-[10px] uppercase tracking-[0.1em] mb-1" style={{ color: "var(--fg-faint)" }}>{label}</p>
+                    <div className="space-y-0.5">
+                      {items.map((it, idx) => (
+                        <p key={idx} className="text-[12.5px]" style={{ color: "var(--fg-muted)" }}>• {it}</p>
+                      ))}
+                    </div>
+                  </div>
+                ) : null
+            )}
           </div>
-        ))}
+        )}
+
+        {plan.materials?.length > 0 && (
+          <div className="card p-4">
+            <p className="section-label mb-2">Materials</p>
+            <div className="space-y-0.5">
+              {plan.materials.map((m, i) => (
+                <p key={i} className="text-[12.5px]" style={{ color: "var(--fg-muted)" }}>• {m}</p>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {ib && (
+          <div className="card p-4 space-y-2">
+            <p className="section-label">IB alignment</p>
+            {ib.globalContext && (
+              <div className="flex items-center gap-2 text-[12.5px]" style={{ color: "var(--fg-muted)" }}>
+                <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "var(--green)" }} />
+                Global context: {ib.globalContext}
+              </div>
+            )}
+            {(ib.atlSkills ?? []).map((s) => (
+              <div key={String(s)} className="flex items-center gap-2 text-[12.5px]" style={{ color: "var(--fg-muted)" }}>
+                <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "var(--green)" }} />
+                <span>ATL: <span className="capitalize">{String(s).toLowerCase().replace(/_/g, " ")}</span></span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
