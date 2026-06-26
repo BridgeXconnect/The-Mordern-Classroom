@@ -226,6 +226,9 @@ function SlidesTab({ slides, lessonId }: { slides: Lesson["slides"]; lessonId: s
     <div>
       <div className="flex items-center gap-3 mb-4">
         <p className="text-[13px]" style={{ color: "var(--fg-muted)" }}>{slides.length} slides</p>
+        <Link href={`/lessons/${lessonId}/slides`} className="btn btn-ghost btn-sm">
+          Edit slides →
+        </Link>
         <button className="btn btn-ghost btn-sm">Export PPTX</button>
         <button className="btn btn-primary btn-sm">Present</button>
       </div>
@@ -264,6 +267,14 @@ function SlidesTab({ slides, lessonId }: { slides: Lesson["slides"]; lessonId: s
 function WorksheetTab({ worksheets, lessonId }: { worksheets: Lesson["worksheets"]; lessonId: string }) {
   return (
     <div>
+      <div className="flex items-center gap-3 mb-4">
+        <p className="text-[13px]" style={{ color: "var(--fg-muted)" }}>
+          {worksheets.length} {worksheets.length === 1 ? "worksheet" : "worksheets"}
+        </p>
+        <Link href={`/lessons/${lessonId}/worksheet`} className="btn btn-ghost btn-sm">
+          Edit worksheet →
+        </Link>
+      </div>
       {worksheets.length === 0 ? (
         <div className="card flex flex-col items-center py-12 text-center">
           <p style={{ color: "var(--fg-muted)" }}>No worksheet yet.</p>
@@ -306,6 +317,14 @@ function QuizTab({
   const quiz = quizzes[0];
   return (
     <div>
+      <div className="flex items-center gap-3 mb-4">
+        <p className="text-[13px]" style={{ color: "var(--fg-muted)" }}>
+          {quizzes.length} {quizzes.length === 1 ? "quiz" : "quizzes"}
+        </p>
+        <Link href={`/lessons/${lessonId}/quizzes`} className="btn btn-ghost btn-sm">
+          Manage quizzes →
+        </Link>
+      </div>
       {!quiz ? (
         <div className="card flex flex-col items-center py-12 text-center">
           <p style={{ color: "var(--fg-muted)" }}>No quiz yet.</p>
