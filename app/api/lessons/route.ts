@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { ownedUnit } from "@/lib/ownership";
@@ -10,6 +11,7 @@ const SaveLessonSchema = z.object({
   objectives: z.array(z.any()),
   duration: z.number().int().min(15).max(300),
   ibAlignment: z.any(),
+  plan: z.any().optional(), // rich WSE-style plan body (summary, targets, materials, activities)
 });
 
 export async function GET(req: Request) {
@@ -41,7 +43,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const { unitId, title, objectives, duration, ibAlignment } = parsed.data;
+  const { unitId, title, objectives, duration, ibAlignment, plan } = parsed.data;
 
   // Verify the target unit belongs to this user before creating under it.
   if (!await ownedUnit(unitId, userId)) {
@@ -51,8 +53,11 @@ export async function POST(req: Request) {
   const count = await db.lesson.count({ where: { unitId } });
   const lesson = await db.lesson.create({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    data: { unitId, title, objectives, duration, ibAlignment: ibAlignment as any, order: count },
+    data: { unitId, title, objectives, duration, ibAlignment: ibAlignment as any, plan: (plan ?? null) as any, order: count },
   });
+
+  // The Library listing is a cached server render — invalidate it so the new lesson shows.
+  revalidatePath("/library");
 
   return NextResponse.json(lesson, { status: 201 });
 }

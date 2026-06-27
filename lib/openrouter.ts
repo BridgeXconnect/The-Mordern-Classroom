@@ -1,6 +1,8 @@
 import OpenAI from "openai";
-import { generateObject } from "ai";
+import { generateText } from "ai";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import { jsonrepair } from "jsonrepair";
 import type { z } from "zod";
 import type { CefrLevel } from "@prisma/client";
 
@@ -39,13 +41,15 @@ function getOpenRouter() {
 // These stay plain OpenRouter model-id strings: `chat`/`chatJSON` pass them to the
 // OpenAI-compatible client, and `generateStructured` resolves them via the AI SDK
 // provider at call time (`getOpenRouter()(model)`).
+// NOTE: all three currently point at gpt-5.4-mini. It is the only model (of the ones
+// we tested via OpenRouter) that reliably returns clean, valid JSON for generation —
+// gemini and claude intermittently emit unescaped control characters (invalid JSON) or
+// upstream `finish_reason: error`. Kept as separate slots so we can re-diversify later
+// (e.g. bring claude back for CEFR phrasing) if/when their JSON output is reliable.
 export const MODELS = {
-  // Fast, cheap, long context — default for most generation
-  DEFAULT: "google/gemini-2.0-flash-001",
-  // Best instruction-following for CEFR-controlled output
-  CEFR: "anthropic/claude-3-5-haiku",
-  // Reliable structured output for quiz/slides/worksheet generation
-  STRUCTURED: "openai/gpt-4o-mini",
+  DEFAULT: "openai/gpt-5.4-mini",
+  CEFR: "openai/gpt-5.4-mini",
+  STRUCTURED: "openai/gpt-5.4-mini",
 } as const;
 
 export type ModelKey = keyof typeof MODELS;
@@ -113,11 +117,15 @@ export interface StructuredOptions {
 }
 
 /**
- * Generate a schema-validated object via the Vercel AI SDK's `generateObject`.
+ * Generate a schema-validated object from the model.
  *
- * Unlike `chatJSON` (which JSON.parses without validation), this enforces `schema`
- * at the SDK level — malformed model output throws `NoObjectGeneratedError` instead
- * of silently persisting. Used by the /api/generate/* routes.
+ * Provider-agnostic by design: we request plain JSON and validate it with Zod
+ * client-side, rather than sending a JSON-Schema to the provider. OpenRouter routes
+ * to many providers (OpenAI/Anthropic/Google/…) whose strict structured-output
+ * dialects each reject a *different* subset of JSON-Schema (tuples, optional
+ * properties, integer `minimum`, …). Validating with Zod here sidesteps all of that
+ * while still guaranteeing the shape — a malformed response throws a ZodError, which
+ * the /api/generate/* routes surface as a generation failure.
  */
 export async function generateStructured<T>(
   schema: z.ZodSchema<T>,
@@ -125,18 +133,59 @@ export async function generateStructured<T>(
   userPrompt: string,
   options: StructuredOptions = {}
 ): Promise<T> {
-  const { model = MODELS.STRUCTURED, temperature = 0.6, maxOutputTokens } = options;
+  // Default a generous token budget so larger objects (lesson/slides/worksheet) don't get
+  // cut off mid-JSON; callers that need more (quiz) still override.
+  const { model = MODELS.STRUCTURED, temperature = 0.6, maxOutputTokens = 8000 } = options;
 
-  const { object } = await generateObject({
+  // Communicate the exact shape to the model via the prompt (not the provider's
+  // structured-output API — see note above). zodToJsonSchema keeps this in lock-step
+  // with the Zod schema, so the model uses the right property names/enums/structure.
+  const jsonSchema = JSON.stringify(zodToJsonSchema(schema));
+
+  const { text } = await generateText({
     model: getOpenRouter()(model),
-    schema,
-    system: systemPrompt,
+    system: `${systemPrompt}\n\nReturn ONLY a single valid JSON object that strictly conforms to this JSON Schema — use these exact property names, enums and structure. No prose, no markdown, no code fences:\n${jsonSchema}`,
     prompt: userPrompt,
     temperature,
     ...(maxOutputTokens ? { maxOutputTokens } : {}),
   });
 
-  return object;
+  return schema.parse(pruneEmptyStrings(extractJson(text)));
+}
+
+/**
+ * Drop empty/whitespace-only strings from arrays (LLM output occasionally includes a blank
+ * array entry, e.g. a trailing ""), recursing through objects/arrays. Leaves scalars and
+ * non-string array elements untouched — so a validly-empty scalar (`contextSetup: ""`) stays,
+ * and if pruning takes an array below its `.min(n)` the schema still fails as intended.
+ */
+function pruneEmptyStrings(v: unknown): unknown {
+  if (Array.isArray(v)) {
+    return v.map(pruneEmptyStrings).filter((x) => !(typeof x === "string" && x.trim() === ""));
+  }
+  if (v && typeof v === "object") {
+    return Object.fromEntries(Object.entries(v).map(([k, val]) => [k, pruneEmptyStrings(val)]));
+  }
+  return v;
+}
+
+/** Pull a JSON value out of an LLM response, tolerating code fences or stray prose. */
+function extractJson(text: string): unknown {
+  let t = text.trim();
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) t = fence[1].trim();
+  if (!t.startsWith("{") && !t.startsWith("[")) {
+    const candidates = [t.indexOf("{"), t.indexOf("[")].filter((i) => i >= 0);
+    const first = candidates.length ? Math.min(...candidates) : -1;
+    const last = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
+    if (first >= 0 && last > first) t = t.slice(first, last + 1);
+  }
+  try {
+    return JSON.parse(t);
+  } catch {
+    // Tolerate minor model imperfections (unescaped control chars, trailing commas).
+    return JSON.parse(jsonrepair(t));
+  }
 }
 
 /**

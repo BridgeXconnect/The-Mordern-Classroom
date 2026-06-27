@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { randomUUID } from "crypto";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -81,5 +82,6 @@ export async function POST(req: Request) {
     },
   });
 
+  revalidatePath("/library");
   return NextResponse.json(quiz, { status: 201 });
 }

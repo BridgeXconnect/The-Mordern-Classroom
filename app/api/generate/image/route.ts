@@ -1,5 +1,6 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { uploadToR2, deleteFromR2 } from "@/lib/r2";
@@ -81,6 +82,7 @@ export async function POST(req: Request) {
         ...(lessonId ? { lessonId } : {}),
       },
     });
+    revalidatePath("/library");
     return NextResponse.json({ ...asset, source: usedSource }, { status: 201 });
   } catch (err) {
     // DB insert failed — clean up the R2 object so we don't leak storage

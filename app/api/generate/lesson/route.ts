@@ -36,7 +36,7 @@ export async function POST(req: Request) {
       GeneratedLessonPlanSchema,
       buildLessonPlanSystemPrompt(input.cefrLevel, input.atlSkills, input.ibTheme),
       buildLessonPlanUserPrompt(input),
-      { model: MODELS.CEFR, temperature: 0.6, maxOutputTokens: 4096 }
+      { model: MODELS.CEFR, temperature: 0.6 }
     );
   } catch (err) {
     if (NoObjectGeneratedError.isInstance(err)) {

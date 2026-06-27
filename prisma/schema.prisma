@@ -97,6 +97,7 @@ model Lesson {
   objectives   Json
   duration     Int
   ibAlignment  Json
+  plan         Json?        // rich WSE-style plan body (summary, targets, materials, activities)
   order        Int          @default(0)
   slides       Slide[]
   worksheets   Worksheet[]

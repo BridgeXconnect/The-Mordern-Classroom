@@ -61,25 +61,45 @@ describe("GeneratedWorksheetSchema", () => {
 });
 
 describe("GeneratedLessonPlanSchema", () => {
-  it("accepts a minimal valid plan", () => {
-    const ok = GeneratedLessonPlanSchema.safeParse({
-      title: "Identity & Culture",
-      objectives: [{ skill: "reading", description: "Read for gist", cefrDescriptor: "B1 reading" }],
-      stages: [
-        { name: "warm-up", duration: 10, teacherActivity: "Elicit", studentActivity: "Discuss", materials: [] },
-      ],
-      ibAlignment: {
-        phase: "Phase 3",
-        receptiveSkills: ["reading"],
-        productiveSkills: ["speaking"],
-        atlSkills: ["COMMUNICATION"],
-        globalContext: "Identities and relationships",
-        conceptualUnderstandings: ["Audience shapes meaning"],
+  const validPlan = {
+    title: "Identity & Culture",
+    summary: "A B1 reading lesson exploring how culture shapes identity.",
+    objectives: [{ skill: "reading", description: "Read for gist", cefrDescriptor: "B1 reading" }],
+    targets: { vocabulary: ["identity", "heritage"], grammar: ["present perfect"], skills: ["read for gist"] },
+    materials: ["Handout A", "Projector"],
+    activities: [
+      {
+        section: "Warm-Up",
+        title: "Memory Game",
+        durationMin: 10,
+        objectives: ["Activate prior knowledge"],
+        materials: [],
+        contextSetup: "Show the images and elicit vocabulary.",
+        steps: ["Greet the class", "Show the first image", "Elicit what students see"],
+        teachingTips: ["If a student is quiet, ask a yes/no question first"],
+        extension: "",
       },
-      vocabulary: ["identity"],
-      assessmentIdeas: ["Exit ticket"],
-      differentiationSuggestions: { support: ["sentence starters"], extension: ["extra reading"] },
-    });
+    ],
+    ibAlignment: {
+      phase: "Phase 3",
+      receptiveSkills: ["reading"],
+      productiveSkills: ["speaking"],
+      atlSkills: ["COMMUNICATION"],
+      globalContext: "Identities and relationships",
+      conceptualUnderstandings: ["Audience shapes meaning"],
+    },
+  };
+
+  it("accepts a valid WSE-style scripted plan", () => {
+    const ok = GeneratedLessonPlanSchema.safeParse(validPlan);
     expect(ok.success).toBe(true);
+  });
+
+  it("rejects an activity with no steps", () => {
+    const bad = GeneratedLessonPlanSchema.safeParse({
+      ...validPlan,
+      activities: [{ ...validPlan.activities[0], steps: [] }],
+    });
+    expect(bad.success).toBe(false);
   });
 });

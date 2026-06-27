@@ -343,26 +343,28 @@ export function ClassDetailClient({ cls }: { cls: ClassData }) {
               </div>
 
               <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Lesson Stages</p>
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Activities</p>
                 <div className="space-y-2">
-                  {generatedPlan.stages.map((s, i) => (
+                  {generatedPlan.activities.map((a, i) => (
                     <div key={i} className="border rounded-md p-3">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium capitalize">{s.name}</span>
-                        <span className="text-xs text-muted-foreground">{s.duration} min</span>
+                        <span className="text-sm font-medium">{a.title}</span>
+                        <span className="text-xs text-muted-foreground">{a.durationMin} min</span>
                       </div>
-                      <p className="text-xs text-muted-foreground">T: {s.teacherActivity}</p>
-                      <p className="text-xs text-muted-foreground">S: {s.studentActivity}</p>
+                      <p className="text-xs text-muted-foreground capitalize">{a.section}</p>
+                      {a.steps.slice(0, 2).map((step, si) => (
+                        <p key={si} className="text-xs text-muted-foreground">{step}</p>
+                      ))}
                     </div>
                   ))}
                 </div>
               </div>
 
-              {generatedPlan.vocabulary.length > 0 && (
+              {generatedPlan.targets.vocabulary.length > 0 && (
                 <div>
                   <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1.5">Vocabulary</p>
                   <div className="flex flex-wrap gap-1">
-                    {generatedPlan.vocabulary.map((v) => (
+                    {generatedPlan.targets.vocabulary.map((v) => (
                       <Badge key={v} variant="secondary" className="text-xs">{v}</Badge>
                     ))}
                   </div>
