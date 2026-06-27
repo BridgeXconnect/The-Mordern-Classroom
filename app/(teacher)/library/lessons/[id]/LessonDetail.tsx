@@ -155,7 +155,13 @@ export function LessonDetail({ lesson }: { lesson: Lesson }) {
           <Link href={`/create?lessonId=${lesson.id}`} className="btn btn-ghost btn-sm flex items-center gap-1.5">
             <Sparkles className="h-3.5 w-3.5" /> Ask copilot
           </Link>
-          <button className="btn btn-primary btn-sm">Present</button>
+          <button
+            className="btn btn-primary btn-sm"
+            disabled={lesson.slides.length === 0}
+            onClick={() => window.open(`/api/slides/present?lessonId=${lesson.id}`, "_blank")}
+          >
+            Present
+          </button>
         </div>
       </div>
 
@@ -373,7 +379,13 @@ function SlidesTab({ slides, lessonId }: { slides: Lesson["slides"]; lessonId: s
       <div className="flex items-center gap-3 mb-4">
         <p className="text-[13px]" style={{ color: "var(--fg-muted)" }}>{slides.length} slides</p>
         <button className="btn btn-ghost btn-sm">Export PPTX</button>
-        <button className="btn btn-primary btn-sm">Present</button>
+        <button
+          className="btn btn-primary btn-sm"
+          disabled={slides.length === 0}
+          onClick={() => window.open(`/api/slides/present?lessonId=${lessonId}`, "_blank")}
+        >
+          Present
+        </button>
       </div>
       {slides.length === 0 ? (
         <div className="card flex flex-col items-center py-12 text-center">
