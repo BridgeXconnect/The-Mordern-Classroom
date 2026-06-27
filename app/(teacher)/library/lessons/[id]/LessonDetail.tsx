@@ -7,6 +7,7 @@ import { ArrowLeft, Sparkles, ExternalLink } from "lucide-react";
 import { Chip, CefrBadge, Swatch } from "@/components/ui/ef-primitives";
 import { InlineEditField } from "@/components/ui/InlineEditField";
 import type { LessonPlanBody, IbAlignment, LessonObjective } from "@/types/lesson";
+import type { SlideContent } from "@/types/slide";
 
 type Tab = "plan" | "slides" | "worksheet" | "quiz" | "media";
 
@@ -367,6 +368,91 @@ function PlanTab({ lesson }: { lesson: Lesson }) {
   );
 }
 
+function SlideThumbnail({ slide }: { slide: Lesson["slides"][number] }) {
+  const c = slide.content as unknown as SlideContent;
+  const type = slide.type;
+  const isTitle = type === "TITLE";
+
+  return (
+    <div
+      className={`w-full aspect-video rounded-lg flex flex-col items-center justify-center p-4 relative overflow-hidden ${
+        isTitle ? "bg-indigo-950 text-white" : "bg-white border border-gray-200"
+      }`}
+      style={{ fontSize: "clamp(6px, 1.5vw, 11px)" }}
+    >
+      {isTitle && (
+        <>
+          <h1 className="text-[1.6em] font-bold text-center text-white leading-tight">{c.title}</h1>
+          {c.subtitle && <p className="mt-1 text-indigo-300 text-center text-[1em]">{c.subtitle}</p>}
+        </>
+      )}
+
+      {type === "CONTENT" && (
+        <div className="w-full">
+          <h2 className="text-[1.4em] font-bold text-indigo-950 border-b-2 border-indigo-600 pb-0.5 mb-2 leading-tight">{c.title}</h2>
+          {c.bullets && c.bullets.length > 0 ? (
+            <ul className="space-y-0.5">
+              {c.bullets.slice(0, 4).map((b, i) => (
+                <li key={i} className="text-[1em] text-gray-700 flex gap-1 leading-tight">
+                  <span className="text-indigo-500 shrink-0">▸</span> {b}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-[1em] text-gray-600 leading-snug line-clamp-4">{c.body}</p>
+          )}
+        </div>
+      )}
+
+      {type === "VOCABULARY" && (
+        <div className="w-full">
+          <h2 className="text-[1.3em] font-bold text-indigo-950 mb-2">📚 {c.title}</h2>
+          <div className="flex gap-1.5 flex-wrap">
+            {(c.vocabularyItems ?? []).slice(0, 3).map((v, i) => (
+              <div key={i} className="bg-indigo-50 border border-indigo-200 rounded p-1.5 flex-1 min-w-0">
+                <div className="font-semibold text-indigo-600 text-[1em]">{v.word}</div>
+                <div className="text-[0.85em] text-gray-500 italic">{v.partOfSpeech}</div>
+                <div className="text-[0.85em] text-gray-700 line-clamp-2">{v.definition}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {type === "GRAMMAR" && c.grammarRule && (
+        <div className="w-full">
+          <h2 className="text-[1.3em] font-bold text-indigo-950 mb-1.5">🔤 {c.title}</h2>
+          <div className="bg-indigo-50 border border-indigo-200 rounded p-2 mb-1">
+            <div className="font-semibold text-indigo-600 text-[1em]">{c.grammarRule.rule}</div>
+            <div className="text-[0.85em] text-gray-600 mt-0.5">{c.grammarRule.explanation}</div>
+          </div>
+          {c.grammarRule.examples.slice(0, 2).map((e, i) => (
+            <div key={i} className="text-[0.85em] text-gray-600">▸ {e}</div>
+          ))}
+        </div>
+      )}
+
+      {type === "ACTIVITY" && (
+        <div className="w-full">
+          <div className="bg-indigo-600 text-white rounded-t px-2 py-1 font-semibold text-[1.1em] mb-1.5">
+            ✏️ {c.title}
+          </div>
+          <p className="text-[0.9em] text-gray-600 mb-1 line-clamp-2">{c.activityInstructions}</p>
+          <ol className="list-decimal list-inside space-y-0.5">
+            {(c.activityItems ?? []).slice(0, 3).map((item, i) => (
+              <li key={i} className="text-[0.85em] text-gray-700">{item}</li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      <span className="absolute bottom-1 right-2 text-[0.8em] text-gray-300 font-mono">
+        {slide.order + 1}
+      </span>
+    </div>
+  );
+}
+
 function SlidesTab({ slides, lessonId }: { slides: Lesson["slides"]; lessonId: string }) {
   return (
     <div>
@@ -390,7 +476,7 @@ function SlidesTab({ slides, lessonId }: { slides: Lesson["slides"]; lessonId: s
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))" }}>
           {slides.map((slide, i) => (
             <div key={slide.id} className="card overflow-hidden cursor-pointer hover:shadow-md transition-shadow" style={{ padding: 0 }}>
-              <div className="ph" style={{ aspectRatio: "16/9" }} />
+              <SlideThumbnail slide={slide} />
               <div className="px-3 py-2 flex items-center justify-between">
                 <span className="font-mono text-[10.5px]" style={{ color: "var(--fg-faint)" }}>
                   {String(i + 1).padStart(2, "0")}
